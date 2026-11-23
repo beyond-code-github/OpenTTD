@@ -603,7 +603,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		if (options.port_zero && port_stretch) {
 			Terms travel;
 			for (const Length &len : length[t]) travel.emplace_back(len.variable, len.coefficient);
-			row(std::move(travel), -JunctionMilp::INF, 0, fmt::format("port zero {}", map.tracks[t].name));
+			row(std::move(travel), -JunctionMilp::INF, 0, fmt::format("portzero {}", map.tracks[t].name));
 		}
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const std::array<int, 2> step = PlanarModel::STEP[((pieces[i] % 8) + 8) % 8];

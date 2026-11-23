@@ -162,7 +162,7 @@ struct PlanarDrawOptions {
 	bool node_lead = false; ///< Rule A probe (D400, engineer 2026-11-23): write PlanarNodeLeadRows as hard rows (tag lead).
 	bool node_gaps = false; ///< Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track from a node to a node with no event travels at least rules.node_leg, or 0 (a trident) where node_gap_from says so (tags `leg`, `leg zero`).
 	const std::vector<std::vector<double>> *node_gap_from = nullptr; ///< With node_gaps: a drawing's lengths (as PlanarDrawResult::lengths); a node-to-node track whose travel there is below 1 half tile is held at 0, every other at least rules.node_leg. Null: every one at least rules.node_leg.
-	bool port_zero = false; ///< A probe (D434): a D412 port line (in-port, no event, to a node) is 0 or an ordinary line, the branch from port_zero_from (tag `port zero`).
+	bool port_zero = false; ///< A probe (D434): a D412 port line (in-port, no event, to a node) is 0 or an ordinary line, the branch from port_zero_from (tag `portzero`).
 	const std::vector<std::vector<double>> *port_zero_from = nullptr; ///< With port_zero: a drawing's lengths (as PlanarDrawResult::lengths); a D412 line whose travel there is below 1 half tile is held at 0 (its pieces free), every other is an ordinary line. Null: every one ordinary.
 	bool corridor = false; ///< The corridor family (D421): beside tracks (copies, rows) as offset curves of their parent chain one lane to their side, with an exact one-lane opening and closing step at their nodes.
 	bool sibling_lanes = false; ///< A probe (D388 spine, SPEC-slots-lengths §11): sibling lanes of one channel are offset curves at one lane between their first and last channel crossing (tag lane), and keep-apart skips their wall pairs there.
