@@ -691,6 +691,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				}
 			}
 			std::set<std::pair<size_t, int>> gridded;
+			std::vector<std::array<size_t, 2>> unknown_runs; ///< grid_conditional: the runs not known positive, as first and last piece.
 			for (size_t i = 0; i < pieces.size();) {
 				if ((pieces[i] % 2) != 0 || capped[i]) {
 					i++;
@@ -710,8 +711,31 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						if (!gridded.insert({at, across}).second) continue;
 						grid_seed.emplace(point[t][at][across], 1);
 					}
+				} else {
+					unknown_runs.push_back({i, last});
 				}
 				i = last + 1;
+			}
+			/* grid_conditional: a run that may be zero is odd across when it has length (one binary z per run; a point not gridded by a positive run is 2 h + q with q >= z). */
+			if (options.grid_conditional && !options.elastic) {
+				for (const auto &[first, last] : unknown_runs) {
+					const int across = (((pieces[first] % 8) + 8) % 8) % 4 == 0 ? 0 : 1;
+					const uint32_t z = var(0, 1, 0, "other");
+					Terms travel;
+					for (size_t j = first; j <= last; j++) {
+						if (!capped[j]) travel.emplace_back(length[t][j].variable, length[t][j].coefficient);
+					}
+					travel.emplace_back(z, -options.coord_max);
+					row(std::move(travel), -JunctionMilp::INF, 0, fmt::format("grid run {} {}", map.tracks[t].name, first));
+					for (size_t at = first; at <= last + 1; at++) {
+						if (!gridded.insert({at, across}).second) continue;
+						const uint32_t h = var(0, options.coord_max, 0, "other");
+						const uint32_t q = var(0, 1, 0, "other");
+						const std::string tag = fmt::format("grid cond {} {}", map.tracks[t].name, at);
+						eq({{point[t][at][across], 1}, {h, -2}, {q, -1}}, 0, tag);
+						row({{q, 1}, {z, -1}}, 0, JunctionMilp::INF, tag);
+					}
+				}
 			}
 		}
 	}

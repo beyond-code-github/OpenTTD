@@ -7135,6 +7135,14 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		sa.node_gaps = false;
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
+		if (std::getenv("PLANAR_GRID_COND") != nullptr) {
+			sa.grid_conditional = true;
+			sa.program_out = true; // to count the `grid run` rows
+		}
+		if (std::getenv("PLANAR_STAGEA_NODEGAPS") != nullptr) {
+			sa.node_gaps = true;
+			sa.node_gap_from = nullptr;
+		}
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
 		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
@@ -7330,6 +7338,10 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		if (sa.grid_conditional) {
+			const auto grid_runs = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("grid run "); });
+			out << std::format("- {} stage A grid run binaries: {}\n", tag, grid_runs);
+		}
 		for (const std::string &missing : a.cusps_missing) out << "  cusp missing: " << missing << "\n";
 		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
 			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */
@@ -7967,6 +7979,10 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		if (sa.grid_conditional) {
+			const auto grid_runs = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("grid run "); });
+			out << std::format("- {} stage A grid run binaries: {}\n", tag, grid_runs);
+		}
 		for (const std::string &missing : a.cusps_missing) out << "  cusp missing: " << missing << "\n";
 		if (const char *dn = std::getenv("PLANAR_DUMP_NODE"); dn != nullptr) {
 			/* Debug aid: one node of the track map: its lines (name, kind, Shape's end heading) and its site. */

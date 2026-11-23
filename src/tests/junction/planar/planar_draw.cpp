@@ -4640,3 +4640,50 @@ TEST_CASE("planar 197: every node-adjacent stretch, stepped or not (recon 2)", "
 	const char *path = std::getenv("PLANAR_RECON_OUT");
 	std::ofstream(path != nullptr ? path : "recon-197-steps-2.md") << out;
 }
+
+/** The axis pieces of a drawing that have length (at least half a unit) and lie on an even across coordinate, as "track piece". */
+static std::vector<std::string> EvenAcrossRuns(const DrawCase &c, const PlanarDrawResult &r)
+{
+	std::vector<std::string> bad;
+	for (size_t t = 0; t < c.v.tracks.size(); t++) {
+		const std::vector<int> &ps = c.v.tracks[t].pieces;
+		for (size_t i = 0; i < ps.size(); i++) {
+			if (ps[i] % 2 != 0 || r.lengths[t][i] < 0.5) continue;
+			const int across = (((ps[i] % 8) + 8) % 8) % 4 == 0 ? 0 : 1;
+			if (r.points[t][i][across] % 2 == 0) bad.push_back(fmt::format("{} {}", t, i));
+		}
+	}
+	return bad;
+}
+
+TEST_CASE("planar draw: grid_conditional makes a run that may be zero odd across when it has length", "[junction][planar][planardraw]")
+{
+	const DrawCase c = ShapeFirst(PlanarTText(1), 1);
+	PlanarDrawOptions o{.clearance = false, .curves = true, .grid = true};
+
+	/* The plain grid leaves axis runs that are flanks of flex inserts at an even across coordinate. */
+	o.program_out = true;
+	const PlanarDrawResult plain = CheckPlanarDrawable(c.v, 15.0, o);
+	REQUIRE(plain.feasible);
+	CHECK(std::ranges::none_of(plain.program.rows, [](const PlanarProgram::Row &w) { return w.tag.starts_with("grid run ") || w.tag.starts_with("grid cond "); }));
+	REQUIRE(!EvenAcrossRuns(c, plain).empty());
+
+	/* With the option, one `grid run` binary per run that may be zero, and no run with length is even across. */
+	o.grid_conditional = true;
+	const PlanarDrawResult cond = CheckPlanarDrawable(c.v, 15.0, o);
+	REQUIRE(cond.feasible);
+	CHECK(std::ranges::any_of(cond.program.rows, [](const PlanarProgram::Row &w) { return w.tag.starts_with("grid run "); }));
+	CHECK(std::ranges::any_of(cond.program.rows, [](const PlanarProgram::Row &w) { return w.tag.starts_with("grid cond "); }));
+	CHECK(EvenAcrossRuns(c, cond).empty());
+
+	/* On fixed points the rows break (a `grid cond` or `grid run` row) when a run with length is even across, and hold when it is odd or at length 0. */
+	o.program_out = false;
+	o.fix_window = 0;
+	o.tidy = false;
+	o.fix_points = &plain.points;
+	const PlanarDrawResult broken = CheckPlanarDrawable(c.v, 15.0, o);
+	CHECK(broken.status == "Infeasible");
+	CHECK(std::ranges::any_of(broken.conflict, [](const std::string &tag) { return tag.starts_with("grid cond ") || tag.starts_with("grid run "); }));
+	o.fix_points = &cond.points;
+	CHECK(CheckPlanarDrawable(c.v, 15.0, o).feasible);
+}
