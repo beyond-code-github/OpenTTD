@@ -157,13 +157,97 @@ struct X1Fixture {
 		base = g;
 	}
 
+	/**
+	 * The start of every track under a geometry, the geometry connected at its nodes: a track that starts at a node starts at the node's point plus the base's offset there (0 for an ordinary track, the opening step for a beside track); an in-port track keeps its base start.
+	 * A node's point is the end of its single track on the other side (a split's trunk; a merge's trunk start: the end of its first non-beside leg in the node's `in` order).
+	 * @param connected Set to false when a merge leg does not end at the node point plus its base offset (the geometry is disconnected).
+	 */
+	std::map<std::string, Point> StartsOf(const Geometry &g, bool *connected = nullptr) const
+	{
+		const auto &map = v.structure.map;
+		const auto end_from = [&](uint32_t t, const Geometry &geometry, Point cur) {
+			const std::string &name = Name(t);
+			const auto it = geometry.find(name);
+			const std::vector<int> &h = heads.at(name);
+			if (it != geometry.end()) {
+				for (const auto &[k, len] : it->second) {
+					const int hh = ((h[k] % 8) + 8) % 8;
+					cur[0] += len * STEPS[hh][0];
+					cur[1] += len * STEPS[hh][1];
+				}
+			}
+			return cur;
+		};
+		const uint32_t nodes = static_cast<uint32_t>(map.expanded.nodes.size());
+		/* The defining track of a node (none when a side is empty) and the base node point. */
+		std::vector<std::optional<uint32_t>> defining(nodes);
+		std::vector<Point> base_point(nodes);
+		for (uint32_t m = 0; m < nodes; m++) {
+			std::vector<uint32_t> ending, starting;
+			for (uint32_t t = 0; t < n; t++) {
+				const PlanarLine &line = map.expanded.lines[t];
+				if (!line.to.port && line.to.index == m) ending.push_back(t);
+				if (!line.from.port && line.from.index == m) starting.push_back(t);
+			}
+			if (ending.empty() || starting.empty()) continue;
+			uint32_t d = ending[0];
+			if (ending.size() > 1) {
+				for (const uint32_t t : map.expanded.nodes[m].in) {
+					if (map.part_of[t] != UINT32_MAX) { d = t; break; }
+				}
+			}
+			defining[m] = d;
+			base_point[m] = end_from(d, base, starts.at(Name(d)));
+		}
+		std::map<std::string, Point> result;
+		std::vector<bool> known(n, false), resolved(nodes, false);
+		std::vector<Point> point(nodes);
+		for (uint32_t t = 0; t < n; t++) {
+			const PlanarLine &line = map.expanded.lines[t];
+			if (line.from.port || !defining[line.from.index]) {
+				result[Name(t)] = starts.at(Name(t));
+				known[t] = true;
+			}
+		}
+		for (bool progress = true; progress;) {
+			progress = false;
+			for (uint32_t m = 0; m < nodes; m++) {
+				if (resolved[m] || !defining[m] || !known[*defining[m]]) continue;
+				resolved[m] = true;
+				progress = true;
+				point[m] = end_from(*defining[m], g, result.at(Name(*defining[m])));
+				for (uint32_t t = 0; t < n; t++) {
+					const PlanarLine &line = map.expanded.lines[t];
+					if (line.from.port || line.from.index != m) continue;
+					const Point &base_start = starts.at(Name(t));
+					result[Name(t)] = {point[m][0] + base_start[0] - base_point[m][0], point[m][1] + base_start[1] - base_point[m][1]};
+					known[t] = true;
+				}
+			}
+		}
+		REQUIRE(std::ranges::all_of(known, [](bool k) { return k; })); // A cycle of nodes: no track defines its start.
+		if (connected != nullptr) {
+			*connected = true;
+			for (uint32_t t = 0; t < n; t++) {
+				const PlanarLine &line = map.expanded.lines[t];
+				if (line.to.port || !defining[line.to.index] || *defining[line.to.index] == t) continue;
+				const uint32_t m = line.to.index;
+				const Point base_end = end_from(t, base, starts.at(Name(t)));
+				const Point end = end_from(t, g, result.at(Name(t)));
+				if (end[0] != point[m][0] + base_end[0] - base_point[m][0] || end[1] != point[m][1] + base_end[1] - base_point[m][1]) *connected = false;
+			}
+		}
+		return result;
+	}
+
 	/** The points of a geometry (unlisted pieces have length 0). */
 	std::vector<Points> PointsOf(const Geometry &g) const
 	{
 		std::vector<Points> points(n);
+		const std::map<std::string, Point> start_of = StartsOf(g);
 		for (const auto &[name, h] : heads) {
 			Points &p = points[idx.at(name)];
-			Point cur = starts.at(name);
+			Point cur = start_of.at(name);
 			p.push_back(cur);
 			const auto it = g.find(name);
 			for (uint32_t k = 0; k < h.size(); k++) {
@@ -832,8 +916,7 @@ bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
 			const Point d = arriving ? Point{site.point[0] - p[0], site.point[1] - p[1]} : Point{p[0] - site.point[0], p[1] - site.point[1]};
 			if (d[0] == 2 * STEPS[k][0] && d[1] == 2 * STEPS[k][1]) return k;
 		}
-		FAIL("node " << n << ": track " << f.Name(t) << " ends beside the node point at no 2 * STEP offset");
-		return 0;
+		return -1; // Beside the node point at no 2 * STEP offset: refused below.
 	};
 	/* The heading of a trunk at node n; a zero-length trunk takes the heading of the trunk of the node at its other end (split: the track arriving there; merge: the track departing it), recursively; none when that end is a port. */
 	const std::function<std::optional<int>(uint32_t, uint32_t, bool, size_t)> trunk_heading = [&](uint32_t n, uint32_t t, bool arriving, size_t depth) -> std::optional<int> {
@@ -852,10 +935,13 @@ bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
 		const uint32_t trunk = trunk_ends ? site.ending[0] : site.starting[0];
 		const std::optional<int> trunk_h = trunk_heading(n, trunk, trunk_ends, 0);
 		if (!trunk_h) continue;
+		if (*trunk_h < 0) return false;
 		for (const bool arriving : {true, false}) {
 			for (const uint32_t t : arriving ? site.ending : site.starting) {
 				if (t == trunk || zero(t)) continue;
-				const int d = ((*trunk_h - heading(n, t, arriving)) % 8 + 8) % 8;
+				const int h = heading(n, t, arriving);
+				if (h < 0) return false;
+				const int d = ((*trunk_h - h) % 8 + 8) % 8;
 				if (std::min(d, 8 - d) > 1) return false;
 			}
 		}
@@ -873,6 +959,7 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 	Contracted out;
 	out.v = f.v;
 	out.points.assign(f.n, {});
+	const std::map<std::string, Point> start_of = f.StartsOf(g);
 	for (const auto &[name, h] : f.heads) {
 		const uint32_t t = f.idx.at(name);
 		Lengths lens(h.size(), 0);
@@ -919,7 +1006,7 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 			tr.pieces.push_back(h[0]);
 			kept.push_back(0);
 		}
-		Point cur = f.starts.at(name);
+		Point cur = start_of.at(name);
 		out.points[t].push_back(cur);
 		for (size_t k = 0; k < kept.size(); k++) {
 			const int hh = ((tr.pieces[k] % 8) + 8) % 8;
@@ -1182,6 +1269,7 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 		PlanarDrawOptions o = base_options;
 		o.port_zero = portzero;
 		o.port_zero_from = &port_zero_from;
+		o.node_gap_from = &port_zero_from;
 		if (rules != "all") o.strict_span = o.strict_zero = o.crossing_flanks = false;
 		if (rules == "span" || rules == "zero") {
 			o.strict_span = rules == "span";
@@ -1194,6 +1282,7 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 		PlanarDrawOptions p = base_options;
 		p.port_zero = portzero;
 		p.port_zero_from = &port_zero_from;
+		p.node_gap_from = &port_zero_from;
 		p.strict_span = p.strict_zero = p.crossing_flanks = false;
 		p.keep_apart_out = true;
 		p.program_out = true;
@@ -1309,6 +1398,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	/** Set a geometry's absorbing pieces from its other pieces; false when one has no length. */
 	auto absorb = [&](const Config &cfg, Geometry &g) { return AbsorbGeometry(f, base_points, cfg, g); };
 	std::map<std::string, uint32_t> skipped; ///< Per configuration, the blind geometries skipped because an absorbing piece had no length.
+	std::map<std::string, uint32_t> disconnected; ///< Per configuration, the geometries skipped because a merge leg does not end at its node (the geometry is not connected).
 
 	/** Judge one geometry into the tallies (the class is cached per polyline). */
 	auto judge_one = [&](const Config &cfg, Tally &tally, const Geometry &g, const std::string &varied, const std::vector<Points> &points, bool on_grid) {
@@ -1511,6 +1601,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			}
 			if (!absorb(cfg, g)) {
 				skipped[cfg.name]++;
+			} else if (bool connected = true; f.StartsOf(g, &connected), !connected) {
+				disconnected[cfg.name]++;
 			} else {
 				const std::vector<Points> points = f.PointsOf(g);
 				bool on_grid = true;
@@ -1554,13 +1646,19 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					const auto &[name, piece, vals] = cfg.axes[a];
 					varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << g[name][piece];
 				}
-				const std::vector<Points> points = f.PointsOf(g);
-				bool on_grid = true;
-				for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
-				ec.built++;
-				if (!on_grid) ec.built_off++;
-				/* A geometry the raster refuses (its turn rules go beyond the walk's grid parity) is in the blind off-grid stream; it is not judged twice. */
-				if (on_grid) judge_one(cfg, tally, g, varied.str(), points, true);
+				bool connected = true;
+				f.StartsOf(g, &connected);
+				if (!connected) {
+					disconnected[cfg.name]++;
+				} else {
+					const std::vector<Points> points = f.PointsOf(g);
+					bool on_grid = true;
+					for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
+					ec.built++;
+					if (!on_grid) ec.built_off++;
+					/* A geometry the raster refuses (its turn rules go beyond the walk's grid parity) is in the blind off-grid stream; it is not judged twice. */
+					if (on_grid) judge_one(cfg, tally, g, varied.str(), points, true);
+				}
 				size_t i = 0;
 				while (i < names.size()) {
 					if (++wp[i] < walks[i].size()) break;
@@ -1599,7 +1697,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	for (const Config &cfg : configs) {
 		const EnumCount &ec = enum_counts[cfg.name];
 		out << "wall " << cfg.name << ": " << cfg_wall[cfg.name] << " s\n";
-		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off; " << skipped[cfg.name] << " more skipped, an absorbing piece had no length); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
+		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off; " << skipped[cfg.name] << " more skipped, an absorbing piece had no length; " << disconnected[cfg.name] << " disconnected, skipped); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
 		write(cfg.name, per[cfg.name]);
 	}
 	write("total hand-named configurations", section[0]);
@@ -2101,14 +2199,49 @@ TEST_CASE("planar domain: K1 is exact under the default rule set", "[junction][p
 	CHECK(totals[3] == 0);
 }
 
-TEST_CASE("planar domain: a connected trident is accepted (D433, F7)", "[junction][planar][planardomain][!shouldfail]")
+TEST_CASE("planar domain: a connected trident is accepted (D433, F7)", "[junction][planar][planardomain]")
 {
-	/* F7 (STATUS): K1 with BC1 = 0 and B1, C1 starting at the split node (4, 9): B1 runs east 16, C1 SE 7 then S 2. The domain accepts it; the rows refuse it (`bound axis`: no node_gap_from, so the zero track keeps lower bound 1). The test flips to an unexpected pass when the rows are fixed. */
+	/* F7: K1 with BC1 = 0 and B1, C1 starting at the split node (4, 9): B1 runs east 16, C1 SE 7 then S 2. The domain accepts it and so do the rows: the judge gives the program the polyline's own travel as node_gap_from, so BC1 takes the zero branch (leg zero) and its pieces are free (D433). The base is this trident, so the node offsets are 0. On the tile grid no axis node-to-node track lies strictly between 0 and node_leg, so the `node gap` refusal is unreachable there for axis legs. */
 	K1Fixture f;
 	f.starts["B1"] = {4, 9};
 	f.starts["C1"] = {4, 9};
+	f.base["BC1"] = {};
 	Geometry g = f.base;
-	g["BC1"] = {};
+	g["B1"] = {{4, 16}};
+	g["C1"] = {{0, 7}, {9, 2}};
+	const Verdicts v = VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
+	INFO("refused by " << Join(v.rules));
+	REQUIRE(v.rows != 2);
+	CHECK(v.domain);
+	CHECK(v.rows == 0);
+}
+
+TEST_CASE("planar domain: walls across a zero trident are not kept apart (D433, F7)", "[junction][planar][planardomain]")
+{
+	/* A zero track's walls are points (D433, D434): BC1 = 0 sits between A1's and C1's walls in the face, and keep-apart neither separates it nor treats the walls either side of it as apart. The domain-35 first example: ABC1 and C1 lie across the trident from each other. */
+	K1Fixture f;
+	f.starts["B1"] = {4, 9};
+	f.starts["C1"] = {4, 9};
+	f.base["BC1"] = {};
+	Geometry g = f.base;
+	g["B1"] = {{4, 16}};
+	g["A1"] = {{0, 1}, {1, 0}, {2, 2}, {9, 6}};
+	g["C1"] = {{0, 1}, {1, 0}, {2, 0}, {9, 6}};
+	const Verdicts v = VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
+	INFO("refused by " << Join(v.rules));
+	REQUIRE(v.rows != 2);
+	CHECK(v.domain);
+	CHECK(v.rows == 0);
+}
+
+TEST_CASE("planar domain: the smallest non-zero trident gap is one tile (D424, F7)", "[junction][planar][planardomain]")
+{
+	/* BC1 = 2 half tiles (node_leg): B1 and C1 start at its end (6, 9), connected. */
+	K1Fixture f;
+	f.starts["B1"] = {6, 9};
+	f.starts["C1"] = {6, 9};
+	f.base["BC1"] = {{0, 2}};
+	Geometry g = f.base;
 	g["B1"] = {{4, 16}};
 	g["C1"] = {{0, 7}, {9, 2}};
 	const Verdicts v = VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
@@ -2641,9 +2774,11 @@ TEST_CASE("planar domain: a copy one lane further from its parent breaks the cor
 	CHECK(base.domain);
 	Y1Fixture moved = f;
 	moved.starts["A1#9"][1] -= 2;
-	/* The judge cannot be asked about the moved copy yet: NodeTurnsHold FAILs on a beside track two lanes out (STOP, reported); the corridor rule on it is the drawing program's own test below. */
-	std::vector<std::string> notes;
-	CHECK_FALSE(CheckPlanarDomain(PlanarDomainInputOf(moved.v, moved.PointsOf(f.base), notes)).legal);
+	const Verdicts out = VerdictsOf(moved, f.base, judge);
+	INFO("refused by " << Join(out.rules));
+	CHECK(out.rows == 1);
+	CHECK(out.rules.contains("corridor"));
+	CHECK_FALSE(out.domain);
 }
 
 /* The drawing program's own tests (an implementation of RowsJudge), not the behaviour. */
