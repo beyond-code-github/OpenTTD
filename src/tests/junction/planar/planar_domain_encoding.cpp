@@ -6789,6 +6789,65 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				}
 			}
 		}
+		/* PLANAR_STAGEA_RULE (R1, held|free): every insert held at 0 except, on each diverging leg's stretch next to its node, the insert nearest the node that turns toward the sibling at a split and away from it at a merge, which is committed (>= 1). */
+		if (const char *rule = std::getenv("PLANAR_STAGEA_RULE"); rule != nullptr) {
+			lock_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) lock_ref[t].assign(v.tracks[t].pieces.size(), 0.0);
+			sa.curve_flex_from = &lock_ref;
+			sa.curve_flex_free = std::string(rule) == "free";
+			const PlanarTrackMap &rmap = v.structure.map;
+			const PlanarTopology &rex = rmap.expanded;
+			size_t forced = 0, no_side = 0, skip_copy = 0, skip_site = 0, skip_fork = 0;
+			std::string no_offer;
+			size_t no_offer_n = 0;
+			for (uint32_t n = 0; n < rex.nodes.size(); n++) {
+				if (n >= topology.nodes.size()) { skip_copy++; continue; }
+				const PlanarStructureSite *site = nullptr;
+				for (const PlanarStructureSite &s : v.structure.sites) {
+					if (s.node == n) site = &s;
+				}
+				if (site == nullptr) { skip_site++; continue; }
+				if (site->straight == UINT32_MAX) { skip_fork++; continue; }
+				const PlanarNode &node = rex.nodes[n];
+				const bool is_split = node.IsSplit();
+				const std::vector<uint32_t> &legs = is_split ? node.out : node.in;
+				for (const uint32_t t : legs) {
+					if (t == site->straight) continue;
+					const uint32_t k = is_split ? 0 : static_cast<uint32_t>(rmap.events[t].size());
+					int sv = 0;
+					for (const uint32_t s : legs) {
+						if (s == t) continue;
+						const uint32_t ss = is_split ? 0 : static_cast<uint32_t>(rmap.events[s].size());
+						const int sd = rmap.Side(s, ss, t, k);
+						if (sd != 0 && sv == 0) sv = sd;
+					}
+					if (sv == 0) { no_side++; continue; }
+					const int d = is_split ? sv : -sv;
+					const PlanarShapeTrack &st = v.tracks[t];
+					const size_t from = k == 0 ? 0 : st.event_piece[k - 1];
+					const size_t to = k < st.event_piece.size() ? st.event_piece[k] : st.pieces.size() - 1;
+					std::vector<uint32_t> middles = st.flex;
+					std::ranges::sort(middles);
+					uint32_t pick = UINT32_MAX;
+					for (const uint32_t m : middles) {
+						if (m < 1 || m < from || m > to) continue;
+						const int turn = st.pieces[m] - st.pieces[m - 1];
+						if ((turn > 0 ? 1 : -1) != d) continue;
+						if (is_split) { pick = m; break; }
+						pick = m;
+					}
+					if (pick == UINT32_MAX) {
+						no_offer_n++;
+						no_offer += std::format(" ({} node {})", rmap.tracks[t].name, n);
+					} else {
+						lock_ref[t][pick] = 1;
+						forced++;
+					}
+				}
+			}
+			out << std::format("- {} rule {}: forced {}, no offer {}{}, no side {}, skipped copy/row {}, no site {}, fork {}\n", tag, rule, forced, no_offer_n, no_offer, no_side, skip_copy, skip_site, skip_fork);
+			flush();
+		}
 		/* PLANAR_STAGEA_IIS (conflict-driven S-bends, D447 / Gemini): every insert starts held at 0; each Infeasible round frees the inserts of the tracks its conflict names (piece, flank, port and cross rows); at most 8 rounds; the last configuration is solved below. */
 		std::vector<std::vector<double>> iis_ref;
 		if (std::getenv("PLANAR_STAGEA_IIS") != nullptr) {
@@ -7100,6 +7159,65 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 					}
 				}
 			}
+		}
+		/* PLANAR_STAGEA_RULE (R1, held|free): every insert held at 0 except, on each diverging leg's stretch next to its node, the insert nearest the node that turns toward the sibling at a split and away from it at a merge, which is committed (>= 1). */
+		if (const char *rule = std::getenv("PLANAR_STAGEA_RULE"); rule != nullptr) {
+			lock_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) lock_ref[t].assign(v.tracks[t].pieces.size(), 0.0);
+			sa.curve_flex_from = &lock_ref;
+			sa.curve_flex_free = std::string(rule) == "free";
+			const PlanarTrackMap &rmap = v.structure.map;
+			const PlanarTopology &rex = rmap.expanded;
+			size_t forced = 0, no_side = 0, skip_copy = 0, skip_site = 0, skip_fork = 0;
+			std::string no_offer;
+			size_t no_offer_n = 0;
+			for (uint32_t n = 0; n < rex.nodes.size(); n++) {
+				if (n >= topology.nodes.size()) { skip_copy++; continue; }
+				const PlanarStructureSite *site = nullptr;
+				for (const PlanarStructureSite &s : v.structure.sites) {
+					if (s.node == n) site = &s;
+				}
+				if (site == nullptr) { skip_site++; continue; }
+				if (site->straight == UINT32_MAX) { skip_fork++; continue; }
+				const PlanarNode &node = rex.nodes[n];
+				const bool is_split = node.IsSplit();
+				const std::vector<uint32_t> &legs = is_split ? node.out : node.in;
+				for (const uint32_t t : legs) {
+					if (t == site->straight) continue;
+					const uint32_t k = is_split ? 0 : static_cast<uint32_t>(rmap.events[t].size());
+					int sv = 0;
+					for (const uint32_t s : legs) {
+						if (s == t) continue;
+						const uint32_t ss = is_split ? 0 : static_cast<uint32_t>(rmap.events[s].size());
+						const int sd = rmap.Side(s, ss, t, k);
+						if (sd != 0 && sv == 0) sv = sd;
+					}
+					if (sv == 0) { no_side++; continue; }
+					const int d = is_split ? sv : -sv;
+					const PlanarShapeTrack &st = v.tracks[t];
+					const size_t from = k == 0 ? 0 : st.event_piece[k - 1];
+					const size_t to = k < st.event_piece.size() ? st.event_piece[k] : st.pieces.size() - 1;
+					std::vector<uint32_t> middles = st.flex;
+					std::ranges::sort(middles);
+					uint32_t pick = UINT32_MAX;
+					for (const uint32_t m : middles) {
+						if (m < 1 || m < from || m > to) continue;
+						const int turn = st.pieces[m] - st.pieces[m - 1];
+						if ((turn > 0 ? 1 : -1) != d) continue;
+						if (is_split) { pick = m; break; }
+						pick = m;
+					}
+					if (pick == UINT32_MAX) {
+						no_offer_n++;
+						no_offer += std::format(" ({} node {})", rmap.tracks[t].name, n);
+					} else {
+						lock_ref[t][pick] = 1;
+						forced++;
+					}
+				}
+			}
+			out << std::format("- {} rule {}: forced {}, no offer {}{}, no side {}, skipped copy/row {}, no site {}, fork {}\n", tag, rule, forced, no_offer_n, no_offer, no_side, skip_copy, skip_site, skip_fork);
+			flush();
 		}
 		/* PLANAR_STAGEA_IIS (conflict-driven S-bends, D447 / Gemini): every insert starts held at 0; each Infeasible round frees the inserts of the tracks its conflict names (piece, flank, port and cross rows); at most 8 rounds; the last configuration is solved below. */
 		std::vector<std::vector<double>> iis_ref;
