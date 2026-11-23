@@ -582,7 +582,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		std::vector<bool> capped; ///< Per piece: its upper bound is 0 (an insert held at 0).
 		for (size_t i = 0; i < pieces.size(); i++) {
 			const bool axis = (pieces[i] % 2) == 0;
-			const double lower = free_piece[i] ? 0 : 1;
+			const double lower = free_piece[i] ? 0 : 1 + options.least_extra;
 			const bool zero = options.flex_zero_from != nullptr && free_piece[i] && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.flex_zero_from->size() && i < (*options.flex_zero_from)[t].size() && (*options.flex_zero_from)[t][i] < options.flex_zero_below;
 			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
 			const bool reference = options.curve_flex_from != nullptr && in_flex && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;

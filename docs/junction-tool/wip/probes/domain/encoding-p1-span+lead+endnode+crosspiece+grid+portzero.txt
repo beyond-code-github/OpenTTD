@@ -11,20 +11,20 @@ Shape's headings (the heading solve of ShapePlanarStructureVariant):
   AC1: 2 1 2 3 2; flex middles: 1 3
   A1#3: 2; flex middles:
   A1#4: 2; flex middles:
-base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): status Optimal, feasible 1, rows 123, columns 68, 14.4831 ms
+base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): status Optimal, feasible 1, rows 123, columns 68, 13.6019 ms
 base A1: start (0,3) lengths 0 0 0 0 0
-base C1: start (6,3) lengths 0 0 0 0 0 0 0 0 0 0
-base AC1: start (6,3) lengths 2 0 0 0 0
-base A1#3: start (0,3) lengths 6
-base A1#4: start (2,1) lengths 2
+base C1: start (10,3) lengths 0 0 0 0 0 0 0 0 0 0
+base AC1: start (10,3) lengths 6 0 0 0 0
+base A1#3: start (0,3) lengths 10
+base A1#4: start (2,1) lengths 6
 node lead rows over the judged contracted variants: 0
 corridor rows over the judged on-grid contracted variants: 4; in the base polyline's read-out: 4
-Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 1
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 3
 node lead rows, configuration node0: 0
 node lead rows, configuration node1: 0
-enumeration wall 0.00130723 s
+enumeration wall 0.00226402 s
 
-wall node0 C1: 0.000287999 s
+wall node0 C1: 0.000312317 s
 enumeration node0 C1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 C1 ==
   both accept: 1 polylines (1 geometries)
@@ -36,11 +36,11 @@ enumeration node0 C1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 AC1: 0.000471427 s
-enumeration node0 AC1: blind 4 geometries (3 on the grid, 1 off; 32 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+wall node0 AC1: 0.001412 s
+enumeration node0 AC1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 AC1 ==
-  both accept: 1 polylines (3 geometries)
-  both reject: 1 polylines (1 geometries)
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
@@ -48,7 +48,7 @@ enumeration node0 AC1: blind 4 geometries (3 on the grid, 1 off; 32 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 A1: 0.000280319 s
+wall node1 A1: 0.000277948 s
 enumeration node1 A1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 A1 ==
   both accept: 1 polylines (1 geometries)
@@ -71,8 +71,8 @@ enumeration node1 A1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped,
  too loose, by domain break rules:
 
 == total neighbourhood configurations ==
-  both accept: 1 polylines (5 geometries)
-  both reject: 1 polylines (1 geometries)
+  both accept: 1 polylines (8 geometries)
+  both reject: 4 polylines (4 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
@@ -81,8 +81,8 @@ enumeration node1 A1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped,
  too loose, by domain break rules:
 
 == total ==
-  both accept: 1 polylines (5 geometries)
-  both reject: 1 polylines (1 geometries)
+  both accept: 1 polylines (8 geometries)
+  both reject: 4 polylines (4 geometries)
   too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
