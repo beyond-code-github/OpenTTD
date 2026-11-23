@@ -6,162 +6,49 @@ B1 headings after flex: 0 -1 0 1 0 1 0 1 2 1; flex middles: 1 3 6 8; run holders
 BD1 headings after flex: 0 -1 0 1 0; flex middles: 1 3; run holders: 4
 C1 headings after flex: 1 0 1 2 1 0 -1 0 1 0; flex middles: 1 3 6 8; run holders: 0 9
 D1 headings after flex: 1 0 1 2 1 2 1 2 3 2; flex middles: 1 3 6 8; run holders: 0 9
-node lead rows over the judged contracted variants: 12
-node lead rows, configuration M1e: 12
+node lead rows over the judged contracted variants: 6
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 8
+node lead rows, configuration M1e: 6
 node lead rows, configuration M1f: 0
-enumeration wall 0.0145494 s
+enumeration wall 0.0162256 s
 
-wall M1e A1 d1 p2=0 p4=0: 0.000563636 s
+wall M1e A1 d1 p2=0 p4=0: 0.000669173 s
 enumeration M1e A1 d1 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=0 ==
   both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
+  too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=10 A1.1=1 A1.2=0 A1.3=1 A1.4=0
-      polyline A1:2*10,1*1,3*1,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x10,1x1,3x1] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (7,2) the heading turns more than one eighth at (15, 4)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
 
-wall M1e A1 d1 p2=0 p4=2: 0.000668397 s
+wall M1e A1 d1 p2=0 p4=2: 0.000695564 s
 enumeration M1e A1 d1 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=2 ==
   both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
+  too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=8 A1.1=1 A1.2=0 A1.3=1 A1.4=2
-      polyline A1:2*8,1*1,3*1,2*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x8,1x1,3x1,2x2] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (6,2) the heading turns more than one eighth at (13, 4)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
 
-wall M1e A1 d1 p2=0 p4=4: 0.000640289 s
+wall M1e A1 d1 p2=0 p4=4: 0.000651334 s
 enumeration M1e A1 d1 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=0 p4=4 ==
   both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
+  too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=6 A1.1=1 A1.2=0 A1.3=1 A1.4=4
-      polyline A1:2*6,1*1,3*1,2*4,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x6,1x1,3x1,2x4] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (5,2) the heading turns more than one eighth at (11, 4)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
 
-wall M1e A1 d1 p2=2 p4=0: 0.000584431 s
+wall M1e A1 d1 p2=2 p4=0: 0.000759411 s
 enumeration M1e A1 d1 p2=2 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=0 ==
   both accept: 0 polylines (0 geometries)
@@ -173,7 +60,7 @@ enumeration M1e A1 d1 p2=2 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=2 p4=2: 0.000837225 s
+wall M1e A1 d1 p2=2 p4=2: 0.000934392 s
 enumeration M1e A1 d1 p2=2 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=2 ==
   both accept: 0 polylines (0 geometries)
@@ -185,7 +72,7 @@ enumeration M1e A1 d1 p2=2 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=2 p4=4: 0.000902653 s
+wall M1e A1 d1 p2=2 p4=4: 0.000996566 s
 enumeration M1e A1 d1 p2=2 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=2 p4=4 ==
   both accept: 0 polylines (0 geometries)
@@ -197,7 +84,7 @@ enumeration M1e A1 d1 p2=2 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=0: 0.000595093 s
+wall M1e A1 d1 p2=4 p4=0: 0.000683532 s
 enumeration M1e A1 d1 p2=4 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=0 ==
   both accept: 0 polylines (0 geometries)
@@ -209,7 +96,7 @@ enumeration M1e A1 d1 p2=4 p4=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=2: 0.000805494 s
+wall M1e A1 d1 p2=4 p4=2: 0.000881441 s
 enumeration M1e A1 d1 p2=4 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=2 ==
   both accept: 0 polylines (0 geometries)
@@ -221,7 +108,7 @@ enumeration M1e A1 d1 p2=4 p4=2: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d1 p2=4 p4=4: 0.000763865 s
+wall M1e A1 d1 p2=4 p4=4: 0.000966468 s
 enumeration M1e A1 d1 p2=4 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d1 p2=4 p4=4 ==
   both accept: 0 polylines (0 geometries)
@@ -233,173 +120,55 @@ enumeration M1e A1 d1 p2=4 p4=4: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=0 p4=0: 0.000510523 s
+wall M1e A1 d2 p2=0 p4=0: 0.000528163 s
 enumeration M1e A1 d2 p2=0 p4=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=0 p4=0 ==
   both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
   too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
-  off grid (geometries): 0 (0 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=8 A1.1=2 A1.2=0 A1.3=2 A1.4=0
-      polyline A1:2*8,1*2,3*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x8,1x2,3x2] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (6,1) the heading turns more than one eighth at (14, 3)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-
-wall M1e A1 d2 p2=0 p4=2: 0.000740825 s
-enumeration M1e A1 d2 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
-== M1e A1 d2 p2=0 p4=2 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
-  off grid (geometries): 0 (0 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=6 A1.1=2 A1.2=0 A1.3=2 A1.4=2
-      polyline A1:2*6,1*2,3*2,2*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x6,1x2,3x2,2x2] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (5,1) the heading turns more than one eighth at (12, 3)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-
-wall M1e A1 d2 p2=0 p4=4: 0.000664194 s
-enumeration M1e A1 d2 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
-== M1e A1 d2 p2=0 p4=4 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
-  too strict: 0 polylines (0 geometries)
-  too loose: 1 polylines (1 geometries)
-  off grid (geometries): 0 (0 geometries)
-  other shape: 0 polylines (0 geometries)
- too strict, by the kept values of the failing pairs:
- too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 1 (geometries 1)
-    varied: A1.0=4 A1.1=2 A1.2=0 A1.3=2 A1.4=4
-      polyline A1:2*4,1*2,3*2,2*4,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x4,1x2,3x2,2x4] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (4,1) the heading turns more than one eighth at (10, 3)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-
-wall M1e A1 d2 p2=2 p4=0: 0.000619763 s
-enumeration M1e A1 d2 p2=2 p4=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
-== M1e A1 d2 p2=2 p4=0 ==
-  both accept: 0 polylines (0 geometries)
-  both reject: 0 polylines (0 geometries)
-  too strict: 1 polylines (1 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
-  [lead] polylines 1 (geometries 1)
-    varied: A1.0=6 A1.1=2 A1.2=2 A1.3=2 A1.4=0
-      polyline A1:2*6,1*2,2*2,3*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      lead A1 end 3 fails
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=2 p4=2: 0.000828883 s
+wall M1e A1 d2 p2=0 p4=2: 0.000691788 s
+enumeration M1e A1 d2 p2=0 p4=2: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== M1e A1 d2 p2=0 p4=2 ==
+  both accept: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall M1e A1 d2 p2=0 p4=4: 0.000659717 s
+enumeration M1e A1 d2 p2=0 p4=4: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== M1e A1 d2 p2=0 p4=4 ==
+  both accept: 0 polylines (0 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall M1e A1 d2 p2=2 p4=0: 0.00072973 s
+enumeration M1e A1 d2 p2=2 p4=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== M1e A1 d2 p2=2 p4=0 ==
+  both accept: 1 polylines (1 geometries)
+  both reject: 0 polylines (0 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall M1e A1 d2 p2=2 p4=2: 0.00101157 s
 enumeration M1e A1 d2 p2=2 p4=2: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=2 p4=2 ==
   both accept: 1 polylines (1 geometries)
@@ -411,7 +180,7 @@ enumeration M1e A1 d2 p2=2 p4=2: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=2 p4=4: 0.000820127 s
+wall M1e A1 d2 p2=2 p4=4: 0.000978351 s
 enumeration M1e A1 d2 p2=2 p4=4: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=2 p4=4 ==
   both accept: 1 polylines (1 geometries)
@@ -423,23 +192,19 @@ enumeration M1e A1 d2 p2=2 p4=4: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=0: 0.000643709 s
+wall M1e A1 d2 p2=4 p4=0: 0.000843405 s
 enumeration M1e A1 d2 p2=4 p4=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=0 ==
-  both accept: 0 polylines (0 geometries)
+  both accept: 1 polylines (1 geometries)
   both reject: 0 polylines (0 geometries)
-  too strict: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
-  [lead] polylines 1 (geometries 1)
-    varied: A1.0=4 A1.1=2 A1.2=4 A1.3=2 A1.4=0
-      polyline A1:2*4,1*2,2*4,3*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      lead A1 end 3 fails
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=2: 0.000987019 s
+wall M1e A1 d2 p2=4 p4=2: 0.000952379 s
 enumeration M1e A1 d2 p2=4 p4=2: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=2 ==
   both accept: 1 polylines (1 geometries)
@@ -451,7 +216,7 @@ enumeration M1e A1 d2 p2=4 p4=2: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1e A1 d2 p2=4 p4=4: 0.000661452 s
+wall M1e A1 d2 p2=4 p4=4: 0.000659304 s
 enumeration M1e A1 d2 p2=4 p4=4: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1e A1 d2 p2=4 p4=4 ==
   both accept: 0 polylines (0 geometries)
@@ -463,7 +228,7 @@ enumeration M1e A1 d2 p2=4 p4=4: blind 1 geometries (1 on the grid, 0 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=0 p9=0: 0.00055577 s
+wall M1f B1 d2 p7=0 p9=0: 0.000591688 s
 enumeration M1f B1 d2 p7=0 p9=0: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=0 p9=0 ==
   both accept: 0 polylines (0 geometries)
@@ -475,7 +240,7 @@ enumeration M1f B1 d2 p7=0 p9=0: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=0 p9=1: 0.000417836 s
+wall M1f B1 d2 p7=0 p9=1: 0.000468787 s
 enumeration M1f B1 d2 p7=0 p9=1: blind 1 geometries (0 on the grid, 1 off); by construction 0 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=0 p9=1 ==
   both accept: 0 polylines (0 geometries)
@@ -487,7 +252,7 @@ enumeration M1f B1 d2 p7=0 p9=1: blind 1 geometries (0 on the grid, 1 off); by c
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall M1f B1 d2 p7=1 p9=0: 0.00038474 s
+wall M1f B1 d2 p7=1 p9=0: 0.000423905 s
 enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == M1f B1 d2 p7=1 p9=0 ==
   both accept: 0 polylines (0 geometries)
@@ -500,133 +265,14 @@ enumeration M1f B1 d2 p7=1 p9=0: blind 1 geometries (1 on the grid, 0 off); by c
  too loose, by domain break rules:
 
 == total ==
-  both accept: 3 polylines (3 geometries)
-  both reject: 10 polylines (10 geometries)
-  too strict: 2 polylines (2 geometries)
-  too loose: 6 polylines (6 geometries)
+  both accept: 5 polylines (5 geometries)
+  both reject: 16 polylines (16 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
  too strict, by the kept values of the failing pairs:
-  [lead] polylines 2 (geometries 2)
-    varied: A1.0=6 A1.1=2 A1.2=2 A1.3=2 A1.4=0
-      polyline A1:2*6,1*2,2*2,3*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      lead A1 end 3 fails
-    varied: A1.0=4 A1.1=2 A1.2=4 A1.3=2 A1.4=0
-      polyline A1:2*4,1*2,2*4,3*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      lead A1 end 3 fails
  too loose, by domain break rules:
-  [node | off grid: A1 (raster: turn) | turn] polylines 6 (geometries 6)
-    varied: A1.0=10 A1.1=1 A1.2=0 A1.3=1 A1.4=0
-      polyline A1:2*10,1*1,3*1,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x10,1x1,3x1] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (7,2) the heading turns more than one eighth at (15, 4)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 2/1: adjacent
-        sep 1 3 5 A1/A1 pieces 2/0: held
-        sep 1 4 5 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-    varied: A1.0=8 A1.1=1 A1.2=0 A1.3=1 A1.4=2
-      polyline A1:2*8,1*1,3*1,2*2,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x8,1x1,3x1,2x2] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (6,2) the heading turns more than one eighth at (13, 4)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-    varied: A1.0=6 A1.1=1 A1.2=0 A1.3=1 A1.4=4
-      polyline A1:2*6,1*1,3*1,2*4,;AB1:2*8,;AC1:2*4,;B1:0*4,1*3,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*10,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] AB1[2x8] D1[1x1,2x10] A1[2x6,1x1,3x1,2x4] B1[0x4,1x3]
-      off grid: first at A1 (raster: turn)
-      break turn tracks A1 tile (5,2) the heading turns more than one eighth at (11, 4)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (2,2) track 5 is listed in `out` but does not start at (4, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
-      break node tracks A1 tile (8,2) track 5 is listed in `in` but does not end at (16, 5)
-        sep 1 3 4 A1/A1 pieces 3/2: adjacent
-        sep 1 3 5 A1/A1 pieces 3/1: held
-        sep 1 3 6 A1/A1 pieces 3/0: held
-        sep 1 4 5 A1/A1 pieces 2/1: adjacent
-        sep 1 4 6 A1/A1 pieces 2/0: held
-        sep 1 5 6 A1/A1 pieces 1/0: adjacent
-        sep 3 2 3 A1/A1 pieces 0/1: adjacent
-        sep 3 2 4 A1/A1 pieces 0/2: held
-        sep 3 2 5 A1/A1 pieces 0/3: held
-        sep 3 3 4 A1/A1 pieces 1/2: adjacent
-        sep 3 3 5 A1/A1 pieces 1/3: held
-        sep 3 4 5 A1/A1 pieces 2/3: adjacent
 
 == base (strict rules on): failing pairs ==
       sep 3 9 11 tracks C1/A1 pieces 0/1 kept [zero contraction kept, full spacing (same direction)] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -8;

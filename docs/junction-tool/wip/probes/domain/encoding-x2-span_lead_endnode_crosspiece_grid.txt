@@ -6,10 +6,11 @@ B1 event piece after flex: 9
 A1 event piece after flex: 4
 B1's last piece (18) is fixed at 4
 node lead rows over the judged contracted variants: 93
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 188
 node lead rows, configuration X2: 93
-enumeration wall 0.468397 s
+enumeration wall 0.53296 s
 
-wall X2 C1: 0.42184 s
+wall X2 C1: 0.477975 s
 enumeration X2 C1: blind 1350 geometries (297 on the grid, 1053 off); by construction 297 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == X2 C1 ==
   both accept: 30 polylines (150 geometries)
@@ -27,7 +28,7 @@ enumeration X2 C1: blind 1350 geometries (297 on the grid, 1053 off); by constru
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall X2 C2: 0.0461782 s
+wall X2 C2: 0.0545392 s
 enumeration X2 C2: blind 324 geometries (276 on the grid, 48 off); by construction 276 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == X2 C2 ==
   both accept: 10 polylines (36 geometries)

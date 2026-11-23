@@ -563,8 +563,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (const uint32_t i : groups[g]) free_piece[i] = true;
 		}
 		for (const uint32_t m : steps) free_piece[m] = false;
-		/* D412: a port line with no event before its node is that stretch whole, and its length may be 0 (the node point on the box edge): its pieces are free, and no flex group of it keeps a least length. */
-		const bool port_stretch = map.expanded.lines[t].from.port != map.expanded.lines[t].to.port && map.events[t].empty();
+		/* D412: "A port line whose stretch from its port to its first node carries no event may have total length 0 ... Every other stretch keeps its least lengths": only an in-port line with no event, never a node-to-out-port line. Its pieces are free, and no flex group of it keeps a least length. */
+		const bool port_stretch = map.expanded.lines[t].from.port && !map.expanded.lines[t].to.port && map.events[t].empty();
 		if (port_stretch) free_piece.assign(pieces.size(), true);
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
@@ -2554,6 +2554,16 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 		return 0;
 	};
 	const auto sign = [](int x) { return x > 0 ? 1 : (x < 0 ? -1 : 0); };
+	/* Whether heading h (mod 8) is the heading of a sibling leg of t at the node: the first piece of an out line at a split, the last of an in line at a merge. */
+	const auto runs_over_sibling = [&](uint32_t node, bool split, uint32_t t, int h) {
+		const PlanarNode &nd = map.expanded.nodes[node];
+		for (const uint32_t s : split ? nd.out : nd.in) {
+			if (s == t || v.tracks[s].pieces.empty()) continue;
+			const int sh = split ? v.tracks[s].pieces.front() : v.tracks[s].pieces.back();
+			if (((sh - h) % 8 + 8) % 8 == 0) return true;
+		}
+		return false;
+	};
 	for (uint32_t t = 0; t < v.tracks.size(); t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		const std::vector<uint32_t> &flex = v.tracks[t].flex;
@@ -2584,7 +2594,7 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 					continue;
 				}
 				const int d = sign(pieces[m] - h0);
-				if (sib != 0 && d != sib) continue;
+				if (sib != 0 && (d != sib || !runs_over_sibling(from.index, true, t, pieces[m]))) continue;
 				if (m == 0 && (n < 2 || is_step(1))) break;
 				const std::array<int, 2> s0 = PlanarModel::STEP[((h0 % 8) + 8) % 8], sm = step(m);
 				rows.push_back(PlanarPointRow{fmt::format("lead {} start {}", map.tracks[t].name, m),
@@ -2608,7 +2618,7 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 					continue;
 				}
 				const int d = sign(pieces[m] - h0);
-				if (sib != 0 && d != sib) continue;
+				if (sib != 0 && (d != sib || !runs_over_sibling(to.index, false, t, pieces[m]))) continue;
 				if (m == n - 1 && (n < 2 || is_step(n - 2))) break;
 				const std::array<int, 2> se = PlanarModel::STEP[((h0 % 8) + 8) % 8], sm = step(m);
 				rows.push_back(PlanarPointRow{fmt::format("lead {} end {}", map.tracks[t].name, m),
@@ -2622,7 +2632,7 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 				if (m != 1 + 2 * k) break;
 				k++;
 				const int d = sign(pieces[m] - pieces[m - 1]);
-				if (sib != 0 && d != sib) continue;
+				if (sib != 0 && (d != sib || !runs_over_sibling(from.index, true, t, pieces[m]))) continue;
 				/* 64 * STEP[h0] . (point m - point 0) - STEP[pieces[m]] . (point m + 1 - point m) >= 0. */
 				const std::array<int, 2> s0 = step(0), sm = step(m);
 				rows.push_back(PlanarPointRow{fmt::format("lead {} start {}", map.tracks[t].name, m),
@@ -2637,7 +2647,7 @@ std::vector<PlanarPointRow> PlanarNodeLeadRows(const PlanarShapeVariant &v)
 				if (n < 2 + 2 * k || m != n - 2 - 2 * k) break;
 				k++;
 				const int d = sign(pieces[m] - pieces[m + 1]);
-				if (sib != 0 && d != sib) continue;
+				if (sib != 0 && (d != sib || !runs_over_sibling(to.index, false, t, pieces[m]))) continue;
 				/* 64 * STEP[last] . (point n - point m + 1) - STEP[pieces[m]] . (point m + 1 - point m) >= 0; the insert piece runs forward, so its dot is >= 0. */
 				const std::array<int, 2> se = step(n - 1), sm = step(m);
 				rows.push_back(PlanarPointRow{fmt::format("lead {} end {}", map.tracks[t].name, m),
