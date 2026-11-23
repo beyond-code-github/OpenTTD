@@ -1,3 +1,22 @@
+# sides-3: keep-apart separates a face's wall segments, cut at crossings (D431)
+Change: a wall the face cuts at a crossing ends at the crossing point in the pair rows (and in the read-out, `PlanarKeepApartPair::Row::p_cross` / `q_cross`, `PlanarKeepApartEnd`). Same measurement as sides-2 (off-interface drawings included). Cell = forced share % / failures (forced count).
+
+| fixture | drawings (off interface) | pair-instances | walk | walk_strict | facing | strict+facing | inward |
+|---|---|---|---|---|---|---|---|
+| X1 | 146 (144) | 3304 | 68.5% / 158 (2264) | 45.2% / 21 (1495) | 0.0% / 0 (0) | 45.2% / 21 (1495) | 24.5% / 268 (811) |
+| X2 | 83 (82) | 2965 | 47.8% / 0 (1417) | 37.8% / 0 (1120) | 0.0% / 0 (0) | 37.8% / 0 (1120) | 25.9% / 453 (769) |
+| M1 | 9 (0) | 397 | 47.4% / 3 (188) | 38.3% / 0 (152) | 0.0% / 0 (0) | 38.3% / 0 (152) | 21.4% / 69 (85) |
+| K1 | 118 (80) | 1681 | 67.2% / 4 (1130) | 64.5% / 0 (1084) | 0.0% / 0 (0) | 64.5% / 0 (1084) | 18.3% / 215 (308) |
+| L1 | 112 (111) | 2792 | 53.5% / 191 (1494) | 41.8% / 157 (1166) | 8.0% / 0 (224) | 41.8% / 157 (1166) | 30.4% / 368 (848) |
+| Y1 | 8 (0) | 290 | 61.4% / 18 (178) | 42.8% / 2 (124) | 0.0% / 0 (0) | 42.8% / 2 (124) | 21.7% / 51 (63) |
+| P1 | 1 (0) | 0 | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) | 0.0% / 0 (0) |
+| BR1 | 6 (0) | 122 | 54.1% / 3 (66) | 35.2% / 3 (43) | 0.0% / 0 (0) | 35.2% / 3 (43) | 27.9% / 11 (34) |
+| TT1 | 2 (0) | 20 | 55.0% / 0 (11) | 30.0% / 0 (6) | 0.0% / 0 (0) | 30.0% / 0 (6) | 25.0% / 1 (5) |
+| TS2 | 1 (0) | 22 | 86.4% / 0 (19) | 77.3% / 0 (17) | 31.8% / 0 (7) | 77.3% / 0 (17) | 40.9% / 0 (9) |
+| 197 | 1 (0) | 2512 | 52.7% / 54 (1325) | 43.8% / 10 (1100) | 8.9% / 0 (223) | 45.1% / 10 (1134) | 41.5% / 410 (1043) |
+
+walk_strict failures before -> after: X1 117 -> 21, X2 24 -> 0, L1 209 -> 157, Y1 5 -> 2, BR1 8 -> 3, TT1 1 -> 0, TS2 1 -> 0, 197 85 -> 10; M1 and K1 0 -> 0. Forced counts unchanged. Not yet explained: the remaining failures (first five per fixture in the commit report; not diagnosed here).
+
 # sides-2: walk_strict failures checked, and measured on every legal drawing incl. off-interface (D431)
 
 ## Verdict on the walk_strict failures: not a mapping bug; the rule certifies the walked part of a wall, the rows use the whole piece

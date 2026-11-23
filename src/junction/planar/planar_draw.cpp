@@ -1572,6 +1572,32 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				}
 				return false;
 			};
+			/* D431: a wall the face cuts at a crossing ends there (its walk end, and the next wall's walk start): cut[k][e] is the crossing at the piece's end e (0 start, 1 end), or SIZE_MAX. */
+			std::vector<std::array<size_t, 2>> cut(n, {SIZE_MAX, SIZE_MAX});
+			{
+				const auto forward = [&](const PlanarCellWall &x) { return x.track < nt && x.heading == ((v.tracks[x.track].pieces[x.piece] % 8) + 8) % 8; };
+				for (size_t k = 0; k < n; k++) {
+					const size_t next = (k + 1) % n;
+					if (w[k].track >= nt || w[next].track >= nt || w[k].track == w[next].track) continue;
+					for (size_t c = 0; c < nc; c++) {
+						const std::array<uint32_t, 2> ctracks = {map.crossings[c].a, map.crossings[c].b};
+						for (int flip = 0; flip < 2; flip++) {
+							if (ctracks[flip] != w[k].track || ctracks[1 - flip] != w[next].track) continue;
+							if (piece_of[c][flip] != w[k].piece || piece_of[c][1 - flip] != w[next].piece) continue;
+							cut[k][forward(w[k]) ? 1 : 0] = c;
+							cut[next][forward(w[next]) ? 0 : 1] = c;
+						}
+					}
+				}
+			}
+			/* A wall's end e as the pair rows use it: the crossing point where cut, else the piece's point. */
+			const auto wall_end = [&](size_t k, uint32_t e) { return cut[k][e] != SIZE_MAX ? cross_point[cut[k][e]] : point[w[k].track][w[k].piece + e]; };
+			const auto row_end = [&](size_t k, uint32_t e, std::array<uint32_t, 2> &end, std::array<uint32_t, 4> &cross) {
+				end = {w[k].track, w[k].piece + e};
+				if (cut[k][e] == SIZE_MAX) return;
+				const size_t c = cut[k][e];
+				cross = {map.crossings[c].a, piece_of[c][0], map.crossings[c].b, piece_of[c][1]};
+			};
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
 					PlanarKeepApartPair *ka = options.keep_apart_out ? &result.keep_apart.emplace_back(PlanarKeepApartPair{fmt::format("sep {} {} {}", f.face, i, j), {w[i].track, w[j].track}, {w[i].piece, w[j].piece}, "", "", {}}) : nullptr;
@@ -1741,8 +1767,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 								if (dumping) dump_kept.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), kept_text);
 							}
 						}
-					const std::array<std::array<uint32_t, 2>, 2> pi ={point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
-					const std::array<std::array<uint32_t, 2>, 2> pj = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
+					/* The walls' ends as the face has them (D431); the piece's own points decide sharing. */
+					const std::array<std::array<uint32_t, 2>, 2> pi = {wall_end(i, 0), wall_end(i, 1)};
+					const std::array<std::array<uint32_t, 2>, 2> pj = {wall_end(j, 0), wall_end(j, 1)};
+					const std::array<std::array<uint32_t, 2>, 2> piece_i = {point[w[i].track][w[i].piece], point[w[i].track][w[i].piece + 1]};
+					const std::array<std::array<uint32_t, 2>, 2> piece_j = {point[w[j].track][w[j].piece], point[w[j].track][w[j].piece + 1]};
 					const auto excluded = [&](const std::array<uint32_t, 2> &a, const std::array<uint32_t, 2> &b) {
 						if (touch_i == -2) return false;
 						/* A touching end lies on the other wall at the touch point, so it is exempt against the whole other wall; the far ends keep full spacing. */
@@ -1750,8 +1779,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						return touch_end(a) || touch_end(b);
 					};
 					bool shared = false;
-					for (const auto &p : pi) {
-						for (const auto &q : pj) shared = shared || find(p[0]) == find(q[0]);
+					for (const auto &p : piece_i) {
+						for (const auto &q : piece_j) shared = shared || find(p[0]) == find(q[0]);
 					}
 					if (shared) {
 						skip("shared point");
@@ -2026,7 +2055,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 									const auto &p = from[e];
 									const auto &q = to[e2];
 									if (excluded(p, q)) continue;
-									if (cand != nullptr) cand->rows.push_back({{w[from_wall].track, w[from_wall].piece + e}, {w[to_wall].track, w[to_wall].piece + e2}});
+									if (cand != nullptr) {
+										PlanarKeepApartPair::Row &r = cand->rows.emplace_back();
+										row_end(from_wall, e, r.p, r.p_cross);
+										row_end(to_wall, e2, r.q, r.q_cross);
+									}
 									Terms t{{b, -M}};
 									for (int d = 0; d < 2; d++) {
 										t.emplace_back(q[d], axis.s[d]);
@@ -2703,13 +2736,31 @@ PlanarDrawPipelineResult DrawPlanarPipeline(const PlanarShapeVariant &v, const P
 	return out;
 }
 
+std::array<int, 2> PlanarKeepApartEnd(const PlanarKeepApartPair::Row &row, bool q, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	const std::array<uint32_t, 2> &end = q ? row.q : row.p;
+	const std::array<uint32_t, 4> &cross = q ? row.q_cross : row.p_cross;
+	if (cross[0] == UINT32_MAX) return points[end[0]][end[1]];
+	/* The crossing point: where the first track's piece meets the second's (a zero-length piece is the point itself). */
+	const std::array<int, 2> &a0 = points[cross[0]][cross[1]], &a1 = points[cross[0]][cross[1] + 1];
+	const std::array<int, 2> &b0 = points[cross[2]][cross[3]], &b1 = points[cross[2]][cross[3] + 1];
+	const std::array<int, 2> da = {a1[0] - a0[0], a1[1] - a0[1]}, db = {b1[0] - b0[0], b1[1] - b0[1]};
+	if (da[0] == 0 && da[1] == 0) return a0;
+	if (db[0] == 0 && db[1] == 0) return b0;
+	const int den = da[0] * db[1] - da[1] * db[0];
+	if (den == 0) return a0;
+	const int num = (b0[0] - a0[0]) * db[1] - (b0[1] - a0[1]) * db[0];
+	/* num / den is the fraction of da; da is a multiple of a unit step, so the point is whole. */
+	return {a0[0] + da[0] * num / den, a0[1] + da[1] * num / den};
+}
+
 bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points)
 {
 	if (!pair.skipped.empty()) return true;
 	return std::ranges::any_of(pair.candidates, [&](const PlanarKeepApartPair::Candidate &c) {
 		return std::ranges::all_of(c.rows, [&](const PlanarKeepApartPair::Row &r) {
-			const std::array<int, 2> &p = points[r.p[0]][r.p[1]];
-			const std::array<int, 2> &q = points[r.q[0]][r.q[1]];
+			const std::array<int, 2> p = PlanarKeepApartEnd(r, false, points);
+			const std::array<int, 2> q = PlanarKeepApartEnd(r, true, points);
 			return c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) >= c.spacing;
 		});
 	});
