@@ -15,7 +15,7 @@ Budget: 75 minutes wall. Never run git stash. Do not touch branch wip-defaults.
 3. **Y1 configurations:** Y1a (the copy's opening: the copy and A1's pieces from the split to the tunnel's first end piece, inserts {0,1,2}, axis even, the run before the tunnel absorbing to keep the crossing) and Y1b (the closing, mirrored). Report corridor and lead row counts (corridor must be above 0).
 
 ## 3. Tests
-- Fast: "planar draw: grid points lie on edge midpoints": X1's base shifted by (1, 1) (x + y parity unchanged? no: shifting both by one keeps x + y parity; use a shift of (1, 0)) breaks a `grid point` row in the program check with grid on. Red before the change.
+- Fast: "planar draw: grid points lie on edge midpoints": X1's base with one node point and its tracks' adjacent points shifted so that point has x + y even (simplest: every point of every track shifted by (1, 0), which flips every point's x + y parity) breaks a `grid point` row in the program check with grid on. Red before the change.
 - Fast: "planar domain: Y1 loads and its base is legal".
 
 ## 4. Gates and output
