@@ -1323,11 +1323,43 @@ std::vector<std::vector<double>> AlongFrom(const Contracted &cv)
 	return out;
 }
 
+/**
+ * The options the judge's keep-apart read-out solves with, for a rule set (as DrawingProgramJudge reads it: "span+lead+endnode+crosspiece+grid+portzero" and its prefixes), without the references (port_zero_from, node_gap_from, along_from: per drawing, set by the caller) and without the read-out flags (program_out, build_only, keep_apart_out).
+ * D444 lazy-2: a Slots solve uses exactly these.
+ */
+PlanarDrawOptions SlotsOptions(const X1Fixture &f, const std::string &rule_set)
+{
+	std::string rules = rule_set;
+	const bool portzero = rules.ends_with("+portzero");
+	if (portzero) rules.resize(rules.size() - 9);
+	const bool grid = rules.ends_with("+grid");
+	if (grid) rules.resize(rules.size() - 5);
+	const bool crosspiece = rules.ends_with("+crosspiece");
+	if (crosspiece) rules.resize(rules.size() - 11);
+	const bool endnode = rules.ends_with("+endnode");
+	if (endnode) rules.resize(rules.size() - 8);
+	const bool lead = rules.ends_with("+lead");
+	if (lead) rules.resize(rules.size() - 5);
+	PlanarDrawOptions o = f.options;
+	o.node_lead = lead;
+	o.end_node = endnode;
+	o.cross_piece = crosspiece;
+	o.grid = grid;
+	o.port_zero = portzero;
+	if (rules != "all") o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	if (rules == "span" || rules == "zero") {
+		o.strict_span = rules == "span";
+		o.strict_zero = rules == "zero";
+	}
+	return o;
+}
+
 RowsJudge DrawingProgramJudge(const std::string &rule_set)
 {
 	/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
 	const char *rules_env = rule_set.empty() ? std::getenv("PLANAR_DOMAIN_RULES") : nullptr;
 	std::string rules = !rule_set.empty() ? rule_set : rules_env == nullptr ? "all" : rules_env;
+	const std::string full_rules = rules;
 	const bool portzero = rules.ends_with("+portzero");
 	if (portzero) rules.resize(rules.size() - 9);
 	const bool grid = rules.ends_with("+grid");
@@ -1346,31 +1378,16 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 		PlanarShapeVariant plain = cv.v;
 		for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
 		const std::vector<std::vector<double>> along_from = AlongFrom(cv);
-		PlanarDrawOptions base_options = f.options;
-		base_options.along_from = &along_from;
-		base_options.node_lead = lead;
-		base_options.end_node = endnode;
-		base_options.cross_piece = crosspiece;
-		base_options.grid = grid;
-		PlanarDrawOptions o = base_options;
-		o.port_zero = portzero;
+		PlanarDrawOptions o = SlotsOptions(f, full_rules);
+		o.along_from = &along_from;
 		o.port_zero_from = &port_zero_from;
 		o.node_gap_from = &port_zero_from;
-		if (rules != "all") o.strict_span = o.strict_zero = o.crossing_flanks = false;
-		if (rules == "span" || rules == "zero") {
-			o.strict_span = rules == "span";
-			o.strict_zero = rules == "zero";
-		}
 		o.keep_apart_out = true;
 		o.build_only = true;
 		if (!interface_rows) o.skip_rows = {"port ", "box"};
 		ro.keep = CheckPlanarDrawable(plain, 5.0, o);
-		PlanarDrawOptions p = base_options;
-		p.port_zero = portzero;
-		p.port_zero_from = &port_zero_from;
-		p.node_gap_from = &port_zero_from;
+		PlanarDrawOptions p = o;
 		p.strict_span = p.strict_zero = p.crossing_flanks = false;
-		p.keep_apart_out = true;
 		p.program_out = true;
 		p.build_only = true;
 		if (!interface_rows) p.skip_rows = {"port ", "box"};
@@ -5965,28 +5982,48 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 			for (const auto &track : points) {
 				for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
 			}
-			PlanarDrawOptions sb = o;
-			sb.grid = true;
-			sb.node_gaps = true;
-			sb.node_gap_from = &lengths;
+			/* D444 lazy-2: stage B solves on what the judge reads (steps cleared) with the judge's options (SlotsOptions) and the references the judge would read from stage A's contracted drawing; coord_max is the solve's bound, not a rule. */
+			PlanarShapeVariant plain = vc;
+			for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+			Contracted a_cv;
+			a_cv.v = plain;
+			a_cv.points = points;
+			const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(points);
+			const std::vector<std::vector<double>> ref_along = AlongFrom(a_cv);
+			bool turns_ok = std::ranges::all_of(plain.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int x, int y) { return std::abs(x - y) > 1; }) == tr.pieces.end(); });
+			for (size_t t = 0; t < plain.tracks.size(); t++) {
+				const auto &ps = plain.tracks[t].pieces;
+				const auto bad = std::ranges::adjacent_find(ps, [](int x, int y) { return std::abs(x - y) > 1; });
+				if (bad != ps.end()) md << std::format("- turn check: track {} pieces {} and {}: headings {} then {}\n", t, bad - ps.begin(), bad - ps.begin() + 1, *bad, *(bad + 1));
+			}
+			X1Fixture fb(plain);
+			fb.options.corridor = true; // As DrawnFixture: a hub with copies is drawn and judged with the corridor family (without it the copies sit on their parents and the judge and the domain refuse the nodes).
+			const bool node_ok = NodeTurnsHold(fb, a_cv);
+			const std::string turn_line = std::format("- stage B contracted variant: per-track turns {}, node turns (F6/F8) {}\n", turns_ok ? "hold" : "FAIL", node_ok ? "hold" : "FAIL");
+			md << turn_line << std::flush;
+			std::cout << turn_line << std::flush;
+			PlanarDrawOptions sb = SlotsOptions(fb, DEFAULT_RULES);
+			sb.port_zero_from = &ref_port_zero;
+			sb.node_gap_from = &ref_port_zero;
+			sb.along_from = &ref_along;
 			sb.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
 			/* The listing solve: no rows, to read stage B's tags; the seed is stage A's pairs mapped by (track, piece). */
 			PlanarDrawOptions listing = sb;
 			listing.keep_apart_out = true;
 			listing.only_pairs_on = true;
-			const PlanarDrawResult lr = CheckPlanarDrawable(vc, 15.0, listing);
+			const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
 			std::vector<std::string> seed;
 			for (const PlanarKeepApartPair &p : lr.keep_apart) {
 				if (!p.skipped.empty() || p.candidates.empty()) continue;
 				if (seed_keys.contains(key_of(p.tracks[0], p.pieces[0], p.tracks[1], p.pieces[1]))) seed.push_back(p.tag);
 			}
 			summary += std::format("- stage B seed: {} of stage A's {} pairs map to stage B tags (listing solve status {}, {} ms, not counted)\n", seed.size(), a.list.size(), lr.status, static_cast<int>(lr.ms));
-			const LazyRun b = LazyLoop(vc, sb, seed, tag, "B", md);
+			const LazyRun b = LazyLoop(plain, sb, seed, tag, "B", md);
 			summary += std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
 			if (b.converged) {
-				X1Fixture f(vc);
+				const X1Fixture &f = fb;
 				Contracted cv;
-				cv.v = vc;
+				cv.v = plain;
 				cv.points = b.last.points;
 				const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(f, cv, true);
 				std::string verdict = std::format("judge {}", jv.accept ? "accept" : "refuse");
@@ -6002,15 +6039,36 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 				verdict += std::format("; domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
 				for (const std::string &rule : breaks) verdict += " [" + rule + "]";
 				summary += "- " + verdict + "\n";
+				for (const std::string &tag : CheckPlanarProgramOnPoints(g_last_readouts.program.program, cv.points).broken) summary += "  - judge program row broken: " + tag + "\n";
+				for (const PlanarKeepApartPair &kp : g_last_readouts.keep.keep_apart) {
+					if (!PlanarKeepApartHolds(kp, cv.points)) summary += "  - judge keep-apart broken: " + kp.tag + "\n";
+				}
+				std::set<std::string> shown;
+				for (const PlanarDomainBreak &br : d.breaks) {
+					if (!shown.insert(br.rule).second) continue;
+					std::string trs;
+					for (const uint32_t t : br.tracks) trs += std::format(" {}", f.Name(t));
+					summary += std::format("  - first domain break [{}] tracks{} tile ({}, {}): {}\n", br.rule, trs, br.tile.x, br.tile.y, br.why);
+				}
+				const auto &mp = vc.structure.map;
+				for (uint32_t n = 0; n < mp.expanded.nodes.size(); n++) {
+					std::string line = std::format("  - node {}:", n);
+					for (uint32_t t = 0; t < f.n; t++) {
+						const PlanarLine &ln = mp.expanded.lines[t];
+						if (!ln.to.port && ln.to.index == n) line += std::format(" {}@end({},{}) h{}", f.Name(t), cv.points[t].back()[0], cv.points[t].back()[1], vc.tracks[t].pieces.back());
+						if (!ln.from.port && ln.from.index == n) line += std::format(" {}@start({},{}) h{}", f.Name(t), cv.points[t].front()[0], cv.points[t].front()[1], vc.tracks[t].pieces.front());
+					}
+					summary += line + "\n";
+				}
 			}
 			/* Control: stage B with every pair's rows (slots-1's stage 2 with sides free), judged the same way. */
 			{
-				const PlanarDrawResult fr = CheckPlanarDrawable(vc, 15.0, sb);
+				const PlanarDrawResult fr = CheckPlanarDrawable(plain, 15.0, sb);
 				std::string verdict = std::format("- control, stage B with all rows: status {} ms {} binaries {}", fr.status, static_cast<int>(fr.ms), fr.binaries);
 				if (fr.status == "Optimal") {
-					X1Fixture f(vc);
+					const X1Fixture &f = fb;
 					Contracted cv;
-					cv.v = vc;
+					cv.v = plain;
 					cv.points = fr.points;
 					const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(f, cv, true);
 					verdict += std::format(" judge {}", jv.accept ? "accept" : "refuse");

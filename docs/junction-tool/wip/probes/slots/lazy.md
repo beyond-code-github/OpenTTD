@@ -66,3 +66,35 @@ Stage B's seed: stage A's pairs mapped to stage B's tags by (track, piece) with 
 3. Legality: not legal by the judge. On T1 stage B the converged drawing is refused by `DrawingProgramJudge(DEFAULT_RULES)` and the domain, but so is the control (stage B with all rows, same options): the refusals ([grid] [node] [length] [keep apart], plus [crossing piece] [end run] in some, and the domain's [turn]) do not come from lazy rows; the judge was not applied to a free slots drawing before (slots-1 never reached stage 2), and its rows are not the options this test solves with (the judge's keep apart rule set is built from the fixture's options, with the drawing's port zero and along references). Judging without interface rows gives the same. The lazy loop's own check (every written pair holds on its points) passes at convergence by construction; the judge mismatch needs its own look before any legality claim.
 
 Stops: none against the brief. Notes: stage B for T2 offers 1 used stage A's last Optimal drawing (round 0, no rows) because round 1 errored; the judge's verdict is the only place the stage-B result is compared with anything outside the run.
+
+
+# lazy-2: Slots solves with the judge's rule set (T1)
+
+Stage B now solves with `SlotsOptions(fixture, DEFAULT_RULES)` (the options `DrawingProgramJudge` builds its keep-apart read-out from: the fixture's options plus the rule set's lead, endnode, crosspiece, grid, portzero, strict span; strict zero and crossing flanks off) and the references the judge reads from stage A's contracted drawing: `port_zero_from` = `node_gap_from` = `PortZeroFrom(points)` (travel per track), `along_from` = `AlongFrom`. Stage B solves on the variant the judge reads (steps cleared). `coord_max` is the solve's bound (from the drawing), not a rule. Stage A unchanged. Before the solve the contracted variant is checked with the judge's turn functions (per-track one-eighth, `NodeTurnsHold`): both hold on T1 in both configs, so stage A's S-bends make no illegal writing.
+
+Options the judge uses: clearance, clear_rows, pairwise, pairwise_all_faces, strict_span (strict_zero, crossing_flanks off), node_gaps, bays off, curves off (X1Fixture); node_lead, end_node, cross_piece, grid, port_zero (rule set); references port_zero_from, node_gap_from (both the travel per track), along_from. Not set: corridor (the fixture's choice), tidy (default on), elastic (off), least_extra (0).
+
+Finding: `X1Fixture(vc)` has no corridor family. Every `DrawnFixture` (L1, Y1, P1, ...) sets `options.corridor = true`, and T1 has copies (B1#12/#14, E1#13/#15). With the plain X1Fixture options the solve puts the copies on their parents' node points; the judge refuses [node turn] (F8: B1#12 and B1#14 both leave node 4 at heading 6) and the domain refuses [connection] [node] (11 breaks; first: "a track ends at the node (2, 9) without being listed there", "track 14 is listed in `in` but does not end at (2, 9)"). The same holds for the all-rows control. With `corridor = true` (as the DrawnFixture family), as kept in the test, both agree below.
+
+### lazy-2 T1 offers 1 d443 off
+
+| stage | round | status | ms | pairs with rows | binaries | failing pairs |
+|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 353 | 0 | 0 | 1 |
+| A | 1 | Optimal | 512 | 1 | 4 | 0 |
+| B | 0 | Optimal | 6 | 1 | 4 | 0 |
+
+Stage B: 1 round, 1 of 318 pairs with rows, 6 ms. Judge accept (also without interface rows); domain accept (0 breaks). Control (all rows, 1272 binaries): Optimal 251 ms, judge accept. Without the corridor option: judge refuse [node turn], domain refuse [connection] [node].
+
+### lazy-2 T1 offers 3 d443 on
+
+| stage | round | status | ms | pairs with rows | binaries | failing pairs |
+|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 1119 | 0 | 0 | 1 |
+| A | 1 | Optimal | 1330 | 1 | 4 | 0 |
+| B | 0 | Optimal | 5 | 1 | 4 | 4 |
+| B | 1 | Optimal | 11 | 5 | 20 | 0 |
+
+Stage B: 2 rounds, 5 of 290 pairs with rows, 17 ms. Judge accept (also without interface rows); domain accept (0 breaks). Control (all rows, 1160 binaries): Optimal 234 ms, judge accept. Without the corridor option: judge refuse [node turn], domain refuse [connection] [node].
+
+Reading: the lazy-1 refusals ([grid] [keep apart] [length] [node] [crossing piece] [end run] [turn]) came from the option mismatch (no strict span, no lead/end-node/cross-piece rows, node gaps from piece lengths instead of travel, no port zero, no along references) and, with these options, from the missing corridor. No real gap remains on T1: lazy rows (1 and 5 pairs) give a drawing the judge and the domain both accept. T2 not re-run (not in this brief).
