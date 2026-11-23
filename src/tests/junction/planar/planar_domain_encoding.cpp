@@ -2417,3 +2417,65 @@ TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planard
 	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
 	RunEncoding(f, report_path, "Y1", configs, f.Header());
 }
+
+namespace {
+
+/** P1: a prio row, the beside track of a prio join (domain-23). */
+struct P1Fixture : DrawnFixture {
+	P1Fixture() : DrawnFixture(
+		"topology P1\nport W in E: A1\nport S in N: C1\nport E out E: AC1\nnode A1, C1 -> AC1\nprio A1\n",
+		"straight AC1: A1\n")
+	{
+	}
+
+	/** The header: the expanded tracks, Shape's headings, the base drawing, the base polyline's runs. */
+	std::string Header() const
+	{
+		std::ostringstream out;
+		const PlanarTopology &x = v.structure.map.expanded;
+		out << "expanded tracks:\n";
+		for (uint32_t t = 0; t < n; t++) {
+			const PlanarLine &l = x.lines[t];
+			const auto end = [&](const PlanarEnd &e) { std::ostringstream o; o << (e.port ? "port " : "node ") << e.index; return o.str(); };
+			out << "  " << Name(t) << ": from " << end(l.from) << " to " << end(l.to) << (v.structure.map.part_of[t] == UINT32_MAX ? ", beside" : ", not beside") << "\n";
+		}
+		out << "Shape's headings (the heading solve of ShapePlanarStructureVariant):\n" << shape_log << "base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): " << draw_log << "\n";
+		const std::vector<Points> base_points = PointsOf(base);
+		for (uint32_t t = 0; t < n; t++) {
+			out << "base " << Name(t) << ": start (" << base_points[t].front()[0] << "," << base_points[t].front()[1] << ") lengths";
+			for (uint32_t k = 0; k < heads.at(Name(t)).size(); k++) {
+				const auto it = base.find(Name(t));
+				const auto l = it == base.end() ? std::map<uint32_t, int>::const_iterator() : it->second.find(k);
+				out << " " << (it != base.end() && l != it->second.end() ? l->second : 0);
+			}
+			out << "\n";
+		}
+		return out.str();
+	}
+};
+
+} // namespace
+
+TEST_CASE("planar domain: P1 loads, has a prio row and its base is legal", "[junction][planar][planardomain]")
+{
+	const P1Fixture f;
+	INFO(f.shape_log << f.draw_log);
+	CHECK(std::ranges::count(f.v.structure.map.part_of, UINT32_MAX) >= 1);
+	CHECK(f.drawing.status == "Optimal");
+	RequireBaseLegal(f);
+	int verdict = 1;
+	const Config none{"base", {}, {}};
+	RunEncoding(f, nullptr, "P1", {none}, "", "span+lead+endnode+crosspiece+grid+portzero", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on P1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_P1");
+	REQUIRE(report_path != nullptr);
+	const P1Fixture f;
+	RequireBaseLegal(f);
+	std::vector<Config> configs;
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	RunEncoding(f, report_path, "P1", configs, f.Header());
+}
