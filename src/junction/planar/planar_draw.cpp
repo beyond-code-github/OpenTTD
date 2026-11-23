@@ -878,7 +878,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 					}
 					if (!conflict) continue;
 					if (var_upper[length[t][flank].variable] == 0) return unsupported(fmt::format("flank_turn: the flank of track {} insert {} is capped at 0", map.tracks[t].name, m));
-					row({{length[t][flank].variable, options.flank_k * length[t][flank].coefficient}, {length[t][m].variable, -length[t][m].coefficient}}, 0, JunctionMilp::INF, fmt::format("flank {} {} {}", map.tracks[t].name, m, after ? "after" : "before"));
+					const std::string flank_tag = fmt::format("flank {} {} {}", map.tracks[t].name, m, after ? "after" : "before");
+					if (var_lower[length[t][m].variable] >= 1) {
+						/* An insert held used: the flank has length (the same rule as a bound, no coupling). */
+						row({{length[t][flank].variable, 1}}, 1, JunctionMilp::INF, flank_tag);
+					} else {
+						row({{length[t][flank].variable, options.flank_k * length[t][flank].coefficient}, {length[t][m].variable, -length[t][m].coefficient}}, 0, JunctionMilp::INF, flank_tag);
+					}
 					result.flank_rows++;
 				}
 			}
