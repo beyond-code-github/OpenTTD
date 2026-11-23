@@ -6,7 +6,7 @@ Shape's headings (the heading solve of ShapePlanarStructureVariant):
   A2: 1 0 1 2 1 0 -1 0 1 0 -1 0 1 0; flex middles: 1 3 6 8 10 12
   B1: 2 1 2 3 2 1 2 3 2; flex middles: 1 3 5 7
   B2: 2 1 2 3 2; flex middles: 1 3
-base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): status Optimal, feasible 1, rows 330, columns 138, 112.519 ms
+base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): status Optimal, feasible 1, rows 330, columns 138, 113.372 ms
 base AB1: start (0,3) lengths 0 0 0 0 0
 base AB2: start (6,5) lengths 0 0 0 0 0
 base A1: start (0,3) lengths 1 0 0 0 0 2 0 0 0 0
@@ -15,15 +15,15 @@ base B1: start (0,3) lengths 0 0 0 0 12 0 0 0 0
 base B2: start (6,5) lengths 2 0 0 0 0
 node lead rows over the judged contracted variants: 1
 corridor rows over the judged on-grid contracted variants: 0; in the base polyline's read-out: 0
-Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 202
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 202; through nodes (F6), rows reject: 0
 node lead rows, configuration L1a: 0
 node lead rows, configuration L1b: 0
 node lead rows, configuration cross0: 0
 node lead rows, configuration node0: 1
 node lead rows, configuration node1: 0
-enumeration wall 0.232578 s
+enumeration wall 0.237909 s
 
-wall L1a: 0.014398 s
+wall L1a: 0.0144781 s
 enumeration L1a: blind 36 geometries (4 on the grid, 32 off; 11628 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == L1a ==
   both accept: 1 polylines (4 geometries)
@@ -41,7 +41,7 @@ enumeration L1a: blind 36 geometries (4 on the grid, 32 off; 11628 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall L1b: 0.20114 s
+wall L1b: 0.204813 s
 enumeration L1b: blind 675 geometries (247 on the grid, 428 off; 0 more skipped, an absorbing piece had no length); by construction 247 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == L1b ==
   both accept: 126 polylines (194 geometries)
@@ -59,7 +59,7 @@ enumeration L1b: blind 675 geometries (247 on the grid, 428 off; 0 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 AB1: 0.000300834 s
+wall node0 AB1: 0.000295511 s
 enumeration node0 AB1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 AB1 ==
   both accept: 1 polylines (1 geometries)
@@ -71,7 +71,7 @@ enumeration node0 AB1: blind 1 geometries (1 on the grid, 0 off; 26 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 A1: 0.000547879 s
+wall node0 A1: 0.000330376 s
 enumeration node0 A1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 A1 ==
   both accept: 1 polylines (3 geometries)
@@ -83,7 +83,7 @@ enumeration node0 A1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 B1: 0.00764996 s
+wall node0 B1: 0.00968698 s
 enumeration node0 B1: blind 27 geometries (15 on the grid, 12 off; 0 more skipped, an absorbing piece had no length); by construction 15 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 B1 ==
   both accept: 1 polylines (9 geometries)
@@ -101,7 +101,7 @@ enumeration node0 B1: blind 27 geometries (15 on the grid, 12 off; 0 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 AB2: 0.000274516 s
+wall node1 AB2: 0.000307593 s
 enumeration node1 AB2: blind 1 geometries (1 on the grid, 0 off; 26 more skipped, an absorbing piece had no length); by construction 1 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 AB2 ==
   both accept: 1 polylines (1 geometries)
@@ -113,7 +113,7 @@ enumeration node1 AB2: blind 1 geometries (1 on the grid, 0 off; 26 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 A2: 0.00061043 s
+wall node1 A2: 0.000714528 s
 enumeration node1 A2: blind 3 geometries (3 on the grid, 0 off; 33 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 A2 ==
   both accept: 1 polylines (3 geometries)
@@ -125,7 +125,7 @@ enumeration node1 A2: blind 3 geometries (3 on the grid, 0 off; 33 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 B2: 0.000571072 s
+wall node1 B2: 0.000868831 s
 enumeration node1 B2: blind 4 geometries (3 on the grid, 1 off; 32 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 B2 ==
   both accept: 1 polylines (3 geometries)
@@ -137,7 +137,7 @@ enumeration node1 B2: blind 4 geometries (3 on the grid, 1 off; 32 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 A2: 0.000375369 s
+wall cross0 A2: 0.000411358 s
 enumeration cross0 A2: blind 4 geometries (2 on the grid, 2 off; 32 more skipped, an absorbing piece had no length); by construction 2 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 A2 ==
   both accept: 1 polylines (2 geometries)
@@ -153,7 +153,7 @@ enumeration cross0 A2: blind 4 geometries (2 on the grid, 2 off; 32 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 B1: 0.00322225 s
+wall cross0 B1: 0.00309023 s
 enumeration cross0 B1: blind 10 geometries (4 on the grid, 6 off; 35 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 B1 ==
   both accept: 1 polylines (3 geometries)
@@ -167,7 +167,7 @@ enumeration cross0 B1: blind 10 geometries (4 on the grid, 6 off; 35 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 A2+B1: 0.00286926 s
+wall cross0 A2+B1: 0.00230775 s
 enumeration cross0 A2+B1: blind 40 geometries (8 on the grid, 32 off; 1580 more skipped, an absorbing piece had no length); by construction 8 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 A2+B1 ==
   both accept: 1 polylines (6 geometries)

@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -735,12 +736,95 @@ void RequireBaseLegal(const X1Fixture &f)
 
 uint32_t g_turn_moved = 0; ///< Contracted writings that took a later representation because the first turned over one eighth.
 uint32_t g_turn_rejected = 0; ///< Contracted writings with no representation within one eighth per turn (the rows reject them).
+uint32_t g_node_turn_rejected = 0; ///< Polylines the rows reject only because a trunk and a leg turn over one eighth at a node (F6).
 
 /** One polyline's contracted writing (D432): the variant with only the pieces that have length, and its points (the polyline's corners). */
 struct Contracted {
 	PlanarShapeVariant v;
 	std::vector<Points> points;
 };
+
+/** F6: at every node, each leg's heading at the node and the trunk's differ by at most one eighth (the contracted turn rule, F3, through nodes). */
+bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
+{
+	const auto &map = f.v.structure.map;
+	struct Site {
+		std::vector<uint32_t> ending, starting;
+		Point point{};
+	};
+	/* A track's end point at a node: its last point when arriving, else its first. */
+	const auto end_point = [&](uint32_t t, bool arriving) { return arriving ? cv.points[t].back() : cv.points[t].front(); };
+	/* A zero-length track (all its points equal) has no heading and is transparent. */
+	const auto zero = [&](uint32_t t) { return std::ranges::all_of(cv.points[t], [&](const Point &p) { return p == cv.points[t].front(); }); };
+	const auto site_of = [&](uint32_t n) {
+		Site site;
+		for (uint32_t t = 0; t < f.n; t++) {
+			const PlanarLine &line = map.expanded.lines[t];
+			if (!line.to.port && line.to.index == n) site.ending.push_back(t);
+			if (!line.from.port && line.from.index == n) site.starting.push_back(t);
+		}
+		REQUIRE((site.ending.size() <= 1 || site.starting.size() <= 1));
+		if (site.ending.empty() || site.starting.empty()) return site;
+		/* The node point is the end point most tracks share (the trunk's on a tie). */
+		const bool trunk_ends = site.ending.size() == 1 && site.starting.size() > 1;
+		site.point = end_point(trunk_ends ? site.ending[0] : site.starting[0], trunk_ends);
+		size_t best = 0;
+		const auto count = [&](const Point &p) {
+			size_t c = 0;
+			for (const uint32_t t : site.ending) c += end_point(t, true) == p ? 1 : 0;
+			for (const uint32_t t : site.starting) c += end_point(t, false) == p ? 1 : 0;
+			return c;
+		};
+		for (const uint32_t t : site.ending) {
+			if (count(end_point(t, true)) > best) { best = count(end_point(t, true)); site.point = end_point(t, true); }
+		}
+		for (const uint32_t t : site.starting) {
+			if (count(end_point(t, false)) > best) { best = count(end_point(t, false)); site.point = end_point(t, false); }
+		}
+		return site;
+	};
+	/* A track's heading at the node n: its end piece's, or for a beside track (its end point not the node point) the heading of the 2-step offset. */
+	const auto heading = [&](uint32_t n, uint32_t t, bool arriving) {
+		const Site site = site_of(n);
+		const Point p = end_point(t, arriving);
+		if (p == site.point) {
+			const std::vector<int> &pieces = cv.v.tracks[t].pieces;
+			return ((arriving ? pieces.back() : pieces.front()) % 8 + 8) % 8;
+		}
+		for (int k = 0; k < 8; k++) {
+			const Point d = arriving ? Point{site.point[0] - p[0], site.point[1] - p[1]} : Point{p[0] - site.point[0], p[1] - site.point[1]};
+			if (d[0] == 2 * STEPS[k][0] && d[1] == 2 * STEPS[k][1]) return k;
+		}
+		FAIL("node " << n << ": track " << f.Name(t) << " ends beside the node point at no 2 * STEP offset");
+		return 0;
+	};
+	/* The heading of a trunk at node n; a zero-length trunk takes the heading of the trunk of the node at its other end (split: the track arriving there; merge: the track departing it), recursively; none when that end is a port. */
+	const std::function<std::optional<int>(uint32_t, uint32_t, bool, size_t)> trunk_heading = [&](uint32_t n, uint32_t t, bool arriving, size_t depth) -> std::optional<int> {
+		if (!zero(t)) return heading(n, t, arriving);
+		const PlanarEnd &other = arriving ? map.expanded.lines[t].from : map.expanded.lines[t].to;
+		if (other.port || depth > map.expanded.nodes.size()) return std::nullopt;
+		const Site m = site_of(other.index);
+		if (m.ending.size() == 1 && m.starting.size() > 1 && m.ending[0] != t) return trunk_heading(other.index, m.ending[0], true, depth + 1);
+		if (m.starting.size() == 1 && m.ending.size() > 1 && m.starting[0] != t) return trunk_heading(other.index, m.starting[0], false, depth + 1);
+		return std::nullopt;
+	};
+	for (uint32_t n = 0; n < map.expanded.nodes.size(); n++) {
+		const Site site = site_of(n);
+		if (site.ending.empty() || site.starting.empty()) continue;
+		const bool trunk_ends = site.ending.size() == 1 && site.starting.size() > 1;
+		const uint32_t trunk = trunk_ends ? site.ending[0] : site.starting[0];
+		const std::optional<int> trunk_h = trunk_heading(n, trunk, trunk_ends, 0);
+		if (!trunk_h) continue;
+		for (const bool arriving : {true, false}) {
+			for (const uint32_t t : arriving ? site.ending : site.starting) {
+				if (t == trunk || zero(t)) continue;
+				const int d = ((*trunk_h - heading(n, t, arriving)) % 8 + 8) % 8;
+				if (std::min(d, 8 - d) > 1) return false;
+			}
+		}
+	}
+	return true;
+}
 
 /**
  * The contracted variant of a polyline (D432): per track one representation of its runs on the variant's pieces, the pieces with length kept in order and equal consecutive headings merged, flex empty; steps are the contracted pieces that came from a flex middle (S-bend inserts).
@@ -1108,10 +1192,13 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	};
 	/** Whether the contracted rows accept the polyline's points: every keep-apart pair, every lead row, and the program breaks nothing. */
 	auto accepts = [&](const Contracted &cv, const Readouts &ro) {
-		return std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); })
-			&& std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
+		const bool per_track = std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); });
+		const bool node_turns = NodeTurnsHold(f, cv);
+		const bool rest = std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
 			&& std::ranges::all_of(ro.lead, [&](const PlanarPointRow &r) { return PlanarPointRowHolds(r, cv.points); })
 			&& CheckPlanarProgramOnPoints(ro.program.program, cv.points).broken.empty();
+		if (per_track && rest && !node_turns) g_node_turn_rejected++;
+		return per_track && node_turns && rest;
 	};
 	/** The number of the program read-out's corridor rows. */
 	auto corridor_rows = [](const Readouts &ro) {
@@ -1132,6 +1219,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	g_corridor_rows_base = 0;
 	g_turn_moved = 0;
 	g_turn_rejected = 0;
+	g_node_turn_rejected = 0;
 	g_lead_by_family.clear();
 	{
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
@@ -1419,7 +1507,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	out << "Encoding report on " << title << ": our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)\n" << header;
 	out << "node lead rows over the judged contracted variants: " << g_lead_rows_seen << "\n";
 	out << "corridor rows over the judged on-grid contracted variants: " << g_corridor_rows_seen << "; in the base polyline's read-out: " << g_corridor_rows_base << "\n";
-	out << "Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: " << g_turn_moved << ", with none within one eighth (rows reject): " << g_turn_rejected << "\n";
+	out << "Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: " << g_turn_moved << ", with none within one eighth (rows reject): " << g_turn_rejected << "; through nodes (F6), rows reject: " << g_node_turn_rejected << "\n";
 	for (const Config &cfg : configs) g_lead_by_family.try_emplace(FamilyOf(cfg.name), 0);
 	for (const auto &[family, rows] : g_lead_by_family) out << "node lead rows, configuration " << family << ": " << rows << "\n";
 	out << "enumeration wall " << wall << " s\n\n";
@@ -2433,6 +2521,22 @@ TEST_CASE("planar domain: Y1 loads and its base is legal", "[junction][planar][p
 	CHECK(verdict == 0);
 }
 
+TEST_CASE("planar domain: a trunk turning two eighths from a beside leg at its node is refused (F6)", "[junction][planar][planardomain]")
+{
+	/* Y1's one too-loose polyline (domain-24 report): A1#8 leaves the node at (20, 9) heading NE (1) while the copy A1#9 closes into it heading SE (3), because contraction removed Shape's zero first piece. */
+	const Y1Fixture f;
+	Geometry g = f.base;
+	g["A1#8"] = {{0, 0}, {1, 2}, {2, 2}, {3, 2}, {4, 0}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	CHECK(cv->v.tracks[f.idx.at("A1#8")].pieces == std::vector<int>({1, 2, 3}));
+	CHECK_FALSE(NodeTurnsHold(f, *cv));
+	/* The base drawing's contracted writing turns at most one eighth at every node. */
+	const std::optional<Contracted> base = ContractedVariant(f, f.base);
+	REQUIRE(base.has_value());
+	CHECK(NodeTurnsHold(f, *base));
+}
+
 TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planardomainenc]")
 {
 	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_Y1");
@@ -2494,6 +2598,15 @@ struct P1Fixture : DrawnFixture {
 };
 
 } // namespace
+
+TEST_CASE("planar domain: P1's base turns at most one eighth at its node (F6)", "[junction][planar][planardomain]")
+{
+	/* C1 has total length 0 in P1's base: its writing has no heading, it is transparent. */
+	const P1Fixture f;
+	const std::optional<Contracted> base = ContractedVariant(f, f.base);
+	REQUIRE(base.has_value());
+	CHECK(NodeTurnsHold(f, *base));
+}
 
 TEST_CASE("planar domain: P1 loads, has a prio row and its base is legal", "[junction][planar][planardomain]")
 {
