@@ -1,50 +1,56 @@
-# BRIEF rig-writer: a v2 drawing as a JunctionLayout for the rig (handover step 2)
+# BRIEF rig-writer: a v2 drawing as v1 route programs, rendered and signalled for the rig (handover step 2)
 
 You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
 
-Budget: 60 minutes in all. The probe run in part 6 caps every solve at 15 s and runs once.
+Budget: 60 minutes in all. The probe runs in part 6 cap every solve at 15 s and run once each.
 
 ## 1. State
 - Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-e1`, head `<HEAD>`. Builds: Debug `build`, Release `build-rel`.
-- Why: the engineer: "we can't really judge anything by a drawing that we can't place". Recon: `docs/junction-tool/wip/RECON-rig-v2.md` (read it whole; it is short). Flat ground, rail and bridges only in this step: no levels, no tunnels, no signals.
+- Why (engineer): "we can't really judge anything by a drawing that we can't place". The rig has built v1 hubs many times from `PlanPlanarJunction`'s path: route programs -> `RenderPlanarRoutePrograms` -> `SignalJunctionTrackRoutes` -> `JunctionLayoutToJson`. The v2 drawing (points per track) has never entered that path. This step converts it into route programs so the existing render and signal pass do the rest. Recon: `docs/junction-tool/wip/RECON-rig-v2.md`. Flat ground: no levels, no tunnels.
 
 ## 2. Read first (once each, with offset/limit)
-- `CODINGSTYLE.md` (C++ part); `src/junction/planar/CLAUDE.md`, the last two bullets of the Drawing program section ("Domain", `PlanarDomainInputOf`).
-- `src/junction/planar/planar_domain.h` (whole, it is short) and `src/junction/planar/planar_domain_map.{h,cpp}` (`PlanarDomainInputOf`, `AddStructure`).
-- `src/junction/junction_layout.h` lines 40-70 and 130-145; `src/junction/junction_route.cpp` lines 155-200 (`AddRasterToLayout`, `NormaliseJunctionLayout`).
-- `src/tests/junction/game/junction_game.cpp` lines 1240-1340 (`[planarbuild]` build loop, `PrepareDomainMap`, `BuildPieces`) and 1398-1410 (`BuildDomainBridge`).
-- `src/tests/junction/planar/planar_domain_encoding.cpp` lines 3652-3700 (BR1) and 7055-7075 (the `[slotsstep2]` domain verdict).
+- `CODINGSTYLE.md` (C++ part); `src/junction/planar/CLAUDE.md`: "Back end (`planar_plan`)", the `PlanarRouteProgram` bullet of the component solver, "Track map", and the last two Drawing program bullets (Domain, `PlanarDomainInputOf`).
+- `src/junction/planar/planar_components.h` lines 20-45 (`PlanarProgramPiece`, `PlanarRouteProgram`, `PlanarComponentLayout`).
+- `src/junction/planar/planar_plan.cpp` lines 192-345 (`RenderPlanarRoutePrograms`, `PlanPlanarJunction`'s signal call).
+- `src/junction/planar/planar_domain.h` (whole) and `src/junction/planar/planar_domain_map.{h,cpp}` (`PlanarDomainInputOf`, `AddStructure`).
+- `src/tests/junction/planar/planar_domain_encoding.cpp` lines 3652-3700 (BR1) and 7040-7075 (the `[slotsstep2]` polish and domain verdict).
 
-## 3. The mapping (decided)
-For a `PlanarDomainInput in` that `CheckPlanarDomain` accepts:
-- Rasterise every track with `RasterPlanarDomainTrack`. Every piece becomes a track bit (`piece.track`) on its tile (`piece.tile`), merged per tile as `AddRasterToLayout` does, EXCEPT the pieces `first..last` (inclusive) of each structure's separator raster: those are the bridge (heads and middles).
-- Each structure that is a bridge becomes `JunctionBridge{start = sep.pieces[first].tile, end = sep.pieces[last].tile}`. A structure that is a tunnel is not built: its separator pieces `first..last` stay out of the rail too, and the function records `"tunnel <separator> not built (no levels)"` in `notes`.
-- Then `NormaliseJunctionLayout` (offsets >= 0, size the bounding box).
-- A raster with a non-empty `rule`, or a bridge whose head tiles do not share a row or column, fails with `why` (return an empty layout), no partial output.
+## 3. The conversion (decided)
+`PlanarComponentLayout PlanarDrawingPrograms(const PlanarShapeVariant &v, const std::vector<std::vector<std::array<int, 2>>> &points, std::string &why)`:
+- `in = PlanarDomainInputOf(v, points, notes)`; the topology is the track map's expanded topology `T = v.structure.map.expanded` (its lines are the tracks; copies are tracks with their own route paths, so every program has `copy` 0 and no `copy_switches`). Premise to check first: `in.tracks[i]` is expanded line i for every i. If not, STOP.
+- For each route r of T and each path p of `T.routes[r].paths` (in order): one `PlanarRouteProgram{r, p, 0, pieces, {}}`. Its pieces: for k over the path's lines, `RasterPlanarDomainTrack(in.tracks[path[k]]).pieces` in order (an empty raster, a zero-length track, adds nothing), each as `{piece.tile, piece.heading, kind, k}`.
+- kind: on a track that is the separator of a domain structure, the pieces `first` and `last` are `Head` and the pieces strictly between are `Middle`; every other piece is `Ground`. A tunnel structure: `why` "tunnel <name> not built (no levels)", return.
+- A raster with a non-empty `rule`: `why` names the track and the rule, return.
+- Shift every piece's tile by one whole-tile offset so the least x and least y over all programs are 0.
+- `width`/`height` the bounding box; `variant` "v2"; other fields default.
+Then the caller renders exactly as `PlanPlanarJunction` does on flat ground: `RenderPlanarRoutePrograms(T, layout)`, then `SignalJunctionTrackRoutes(layout, routes, network, spec, &why, &prio_beside)`.
+Prio rows (`prio:<line>` tracks) carry no route, so they get no program: the signal pass places the prio element itself, as in v1. Report what it did on T1.
 
 ## 4. Tests, outermost first
-**Test A** (outer, `src/tests/junction/game/junction_game.cpp`, tags `[junction][junctiongame][planardomaingame]`): "a v2 drawing's layout builds in the game (BR1)". BR1's base domain input (as the BR1 test at planar_domain_encoding.cpp:3681 builds it: if that input is not reachable from junction_game.cpp without moving fixture code, STOP and report) -> `PlanarDomainLayout` -> on `PrepareDomainMap()`'s map, `MakeJunctionBuildSteps(layout, origin)` and the same command loop as `[planarbuild]` (rail and bridges; no signals): every command succeeds, and the built tiles' track bits equal the layout's. Red first with a stub returning an empty layout and why "stub": record the failure text.
-**Test B** (inner, `src/tests/junction/planar/planar_domain_encoding.cpp`, tags `[junction][planar][planardomain]`): on BR1's base input the layout has exactly one bridge, its heads on one row or column, no track bit on any tile from the head to the head inclusive along the separator, every tile offset >= 0; and a hand input with a bad point (`rule` "grid") gives an empty layout and a `why` naming the track.
-Budgets: `tools/junction/jt fast build '[planardomain]'`, `tools/junction/jt fast build '[junctiongame]' 10`.
+**Test A** (`src/tests/junction/planar/planar_domain_encoding.cpp`, tags `[junction][planar][planardomain]`): "planar domain: a v2 drawing renders through the v1 route programs (BR1)". BR1's base drawing and variant -> `PlanarDrawingPrograms` (why empty) -> `RenderPlanarRoutePrograms(T, ...)` (why empty) -> its layout's track bits per tile equal the union of `RasterPlanarDomainTrack` pieces over every track, minus the bridge pieces `first..last` of each structure's separator; the layout has one bridge per structure, at the head tiles. This is the cross-check of the two rasterisers on one drawing. Red first: a stub returning an empty layout with why "stub"; record the failure text.
+**Test B** (same file and tags): a drawing with one point moved off the grid gives `why` naming that track.
+Budget: `tools/junction/jt fast build '[planardomain]'`.
 
 ## 5. Changes
-1. `planar_domain_map.h/.cpp`: `JunctionLayout PlanarDomainLayout(const PlanarDomainInput &in, std::vector<std::string> &notes, std::string &why);` with a doc comment citing this brief's mapping.
-2. `[slotsstep2]` probe (planar_domain_encoding.cpp, at the domain verdict ~:7068): when env `PLANAR_RIG_OUT=<path>` is set and the domain accepts, write `JunctionLayoutToJson(PlanarDomainLayout(...))` to that path and print `rig layout: <path> size WxH tracks N bridges M notes K` (or the why).
-3. `src/junction/planar/CLAUDE.md`: one bullet under the domain bullets for `PlanarDomainLayout` (decided facts only). TESTS.md: measured times if a tag row changes.
+1. `planar_domain_map.h/.cpp`: `PlanarDrawingPrograms` as in part 3, doc comment citing this brief.
+2. `[slotsstep2]` probe (planar_domain_encoding.cpp, after the domain verdict ~:7068): when env `PLANAR_RIG_OUT=<path>` is set and the domain accepts: convert, render, signal (spec as the probe has it), and write `JunctionLayoutToJson(layout)` to `<path>`; print `rig: <path> size WxH tracks N bridges M signals S` and, when the render or the signal pass fails, its why. If the signal pass fails, still write the unsignalled render layout to `<path>` and say so in the line.
+3. `src/junction/planar/CLAUDE.md`: one bullet under the domain bullets for `PlanarDrawingPrograms` (decided facts only).
 
-## 6. Probe run (after the tests are green; Release)
-In `/home/pete/OpenTTD/.claude/ng1/build-rel`: `PLANAR_SLOTS_HUB=T1 PLANAR_FLANK=1 PLANAR_NODE_FLANK=1 JUNCTION_MILP_INCUMBENT=1 PLANAR_RIG_OUT=<your scratchpad>/T1-rig.json ./openttd_test '[slotsstep2]' > <scratchpad>/t1.log 2>&1`. Then copy the JSON to `/home/pete/OpenTTD/docs/junction-tool/wip/rig-2026-11-25/T1-v2.json` (create the folder) and commit it with the docs. Report the rig layout line, the judge and domain lines. If T1 is not domain-accepted, report; do not retry.
+## 6. Probe runs (after the tests are green; Release; scratch output under your session scratchpad)
+In `/home/pete/OpenTTD/.claude/ng1/build-rel`:
+`PLANAR_SLOTS_HUB=T1 PLANAR_FLANK=1 PLANAR_NODE_FLANK=1 JUNCTION_MILP_INCUMBENT=1 PLANAR_RIG_OUT=<scratchpad>/T1-v2.json ./openttd_test '[slotsstep2]' > <scratchpad>/t1.log 2>&1`.
+Copy the JSON to `/home/pete/OpenTTD/.claude/ng1/docs/junction-tool/wip/rig-2026-11-25/T1-v2.json` (create the folder) and commit it. Report the `rig:` line, the judge and domain lines, and what the signal pass did with the prio (placed / why).
 
 ## 7. Do not
-- No levels, terraform, tunnels or signals. No change to `CheckPlanarDomain`, `RasterPlanarDomainTrack` or any solver. No new knob besides `PLANAR_RIG_OUT`.
-- Never start a game client or server, never touch the rig (ports 4077/4079), never touch other worktrees. No `git stash`; source edits with the Edit tool.
+- No levels, terraform, tunnels. No change to `RenderPlanarRoutePrograms`, `SignalJunctionTrackRoutes`, `CheckPlanarDomain`, `RasterPlanarDomainTrack`, any solver or default. No knob besides `PLANAR_RIG_OUT`. No tile-level writer as a fallback: a render failure is reported.
+- Never start a game client or server, never touch the rig (ports 4077/4079) or other worktrees. No `git stash`. Source edits only with the Edit tool (no Python or shell rewrites, not even for temporary tests).
 
 ## 8. Stop conditions
-- BR1's input unreachable from the game test without moving code; a bridge head piece that is not axis; any command failure in test A you cannot trace to the mapping in part 3 (report the command, tile and error; do not change the mapping).
+- `in.tracks` not indexed like the expanded lines; a path whose consecutive tracks do not meet (last point != next first point after the domain input's merges); `RenderPlanarRoutePrograms` refusing BR1 (report its why: it names whether the move rules or the tile check failed); a bridge head piece not axis.
 
 ## 9. Gates and commit
-- The two fast tags above and `tools/junction/jt gate build-rel` (a SIGSEGV/SIGILL in an unrelated test that passes alone is CPU instability: rerun it alone, say so).
-- Commit: `Add: Junction: PlanarDomainLayout, a v2 drawing as a rig layout (flat, rail and bridges)`, then `Doc: Junction: T1 v2 rig layout` for the JSON. End each with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- `tools/junction/jt fast build '[planardomain]'`, `tools/junction/jt fast build '[planar]'`, `tools/junction/jt gate build-rel` (a SIGSEGV/SIGILL in an unrelated test that passes alone is CPU instability: rerun it alone and say so).
+- Commits: `Add: Junction: PlanarDrawingPrograms, a v2 drawing as v1 route programs for the rig`, then `Doc: Junction: T1 v2 rig layout`. End each with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## 10. Report
-References read; commits (hash, subject); red evidence; types and members added; suite results (counts, times, failures you did not cause); the probe's rig layout, judge and domain lines; stops and anything undone; `git status --porcelain` and `git log -1`. When you have reported, stop.
+References read; commits (hash, subject); red evidence; types and members added; suite results (counts, times, failures you did not cause); the `rig:` line, judge and domain lines, and the prio's fate; stops and anything undone; `git status --porcelain` and `git log -1`. When you have reported, stop.
