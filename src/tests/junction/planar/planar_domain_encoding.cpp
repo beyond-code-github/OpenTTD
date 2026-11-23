@@ -628,7 +628,7 @@ struct Tally {
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
 	std::vector<Example> other; ///< The first other shape polylines.
-	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, only port rows reject them).
+	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, only interface rows, the ports and the box, reject them).
 };
 
 uint32_t g_corridor_rows_seen = 0; ///< The corridor rows over the on-grid contracted variants judged in the last report.
@@ -1295,9 +1295,9 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						g_corridor_rows_seen += corridor_rows(ro);
 					}
 					const bool accept = accepts(*cv, ro);
-					/* Off interface: the rows reject only through program rows tagged `port ` (the hub's interface, not tile legality). */
+					/* Off interface: the rows reject only through program rows of the hub's interface (the ports and the box), not tile legality. */
 					const std::vector<std::string> broken = CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken;
-					const bool only_port = !accept && !broken.empty() && std::ranges::all_of(broken, [](const std::string &b) { return b.starts_with("port "); }) && OnlyProgramRowsReject(f, *cv, ro);
+					const bool only_port = !accept && !broken.empty() && std::ranges::all_of(broken, [](const std::string &b) { return b.starts_with("port ") || b == "box" || b.starts_with("box ") || b == "bound box" || b == "integer box"; }) && OnlyProgramRowsReject(f, *cv, ro);
 					if (d.legal && only_port) {
 						nc.c = OFF_INTERFACE;
 					} else if (d.legal) {
@@ -2764,4 +2764,27 @@ TEST_CASE("planar domain: two port lines on one point are rejected by the port r
 	CHECK(f.PointsOf(g)[f.idx.at("A2")].back() == f.PointsOf(g)[f.idx.at("A1")].back());
 	const auto port_rows = [](const std::vector<std::string> &broken) { return std::ranges::count_if(broken, [](const std::string &b) { return b.starts_with("port N gap"); }); };
 	CHECK(port_rows(BrokenRows(f, g)) == 1);
+}
+
+TEST_CASE("planar domain: the box width and height are group box, grid halves group half", "[junction][planar][planardomain]")
+{
+	const X1Fixture f;
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	o.grid = true;
+	const PlanarDrawResult r = CheckPlanarDrawable(f.v, 5.0, o);
+	REQUIRE(r.status == "built");
+	const auto &group = r.program.group;
+	CHECK(std::ranges::count(group, "box") == 2);
+	CHECK(std::ranges::count(group, "half") >= 1);
+	/* The box rows name the box variables. */
+	size_t box_terms = 0;
+	for (const PlanarProgram::Row &row : r.program.rows) {
+		if (row.tag != "box" && !row.tag.starts_with("box ")) continue;
+		for (const auto &term : row.terms) box_terms += group[term.first] == "box";
+	}
+	CHECK(box_terms > 0);
 }
