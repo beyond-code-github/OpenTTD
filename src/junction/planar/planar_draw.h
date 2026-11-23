@@ -22,10 +22,15 @@
 
 /** One keep-apart pair of the pairwise block as written (D428 read-out): its skip reason, or its candidates with the rows each writes. */
 struct PlanarKeepApartPair {
-	/** One row of a candidate: s . (q - p) >= spacing, p and q given as (track, point index). */
+	/**
+	 * One row of a candidate: s . (q - p) >= spacing, p and q given as (track, point index).
+	 * A wall the face cuts at a crossing ends there (D431): the end is then the crossing point, named by p_cross / q_cross as (track a, piece of a, track b, piece of b) of the crossing, UINT32_MAX when the end is the piece's point.
+	 */
 	struct Row {
 		std::array<uint32_t, 2> p;
 		std::array<uint32_t, 2> q;
+		std::array<uint32_t, 4> p_cross = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
+		std::array<uint32_t, 4> q_cross = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
 	};
 	/** One side of one axis; the pair holds when every row of one candidate holds. */
 	struct Candidate {
@@ -44,6 +49,9 @@ struct PlanarKeepApartPair {
 	int facing = -1; ///< With keep_apart_out: the candidate facing_sides (D426) forces (anti-parallel facing walls: 0), or -1; facing walls at another angle choose between the two inward candidates on a reference and force none.
 	uint32_t inward = 0; ///< With keep_apart_out: bit (axis * 2 + side) set for each candidate inward_sides allows.
 };
+
+/** The end a row names on given points (as PlanarDrawResult::points): the row's p (q false) or q (q true), the crossing point where the row names a cut end. */
+std::array<int, 2> PlanarKeepApartEnd(const PlanarKeepApartPair::Row &row, bool q, const std::vector<std::vector<std::array<int, 2>>> &points);
 
 /** Whether a pair holds on given points (as PlanarDrawResult::points): it is skipped, or every row of one of its candidates holds. */
 bool PlanarKeepApartHolds(const PlanarKeepApartPair &pair, const std::vector<std::vector<std::array<int, 2>>> &points);

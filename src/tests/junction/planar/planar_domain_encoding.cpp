@@ -640,8 +640,8 @@ int WorstSlack(const PlanarKeepApartPair::Candidate &c, const std::vector<Points
 {
 	int worst = INT_MAX;
 	for (const PlanarKeepApartPair::Row &r : c.rows) {
-		const Point &p = points[r.p[0]][r.p[1]];
-		const Point &q = points[r.q[0]][r.q[1]];
+		const Point p = PlanarKeepApartEnd(r, false, points);
+		const Point q = PlanarKeepApartEnd(r, true, points);
 		worst = std::min(worst, c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) - c.spacing);
 	}
 	return worst;
@@ -1427,8 +1427,8 @@ int CandidateMargin(const PlanarKeepApartPair::Candidate &c, const std::vector<s
 {
 	int margin = INT_MAX;
 	for (const PlanarKeepApartPair::Row &r : c.rows) {
-		const std::array<int, 2> &p = points[r.p[0]][r.p[1]];
-		const std::array<int, 2> &q = points[r.q[0]][r.q[1]];
+		const std::array<int, 2> p = PlanarKeepApartEnd(r, false, points);
+		const std::array<int, 2> q = PlanarKeepApartEnd(r, true, points);
 		margin = std::min(margin, c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) - c.spacing);
 	}
 	return margin;
@@ -2144,6 +2144,36 @@ TEST_CASE("planar domain: X1 is exact under the default rule set", "[junction][p
 	INFO("X1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
 	CHECK(totals[3] == 0);
+}
+
+TEST_CASE("planar domain: keep-apart separates a face's wall segments, cut at crossings (D431)", "[junction][planar][planardomain]")
+{
+	/* The sides-2 hand check: X1's polyline A1 3*2,2*8,1*2,2*4 with B1 0*10. Face 4's walls A1 piece 1 and B1 piece 0 are cut at the crossing (11,7); a wall ends there, not at the piece's far end (11,0). */
+	const X1Fixture f;
+	Geometry g = f.base;
+	g["A1"] = {{3, 2}, {4, 8}, {5, 2}, {6, 4}};
+	const Verdicts v = VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
+	REQUIRE(v.rows != 2);
+	INFO("refused by " << Join(v.rules));
+	CHECK(v.domain);
+	CHECK(v.rows == 0);
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	bool found = false;
+	uint32_t cut_rows = 0;
+	for (const PlanarKeepApartPair &pair : g_last_readouts.keep.keep_apart) {
+		CHECK(PlanarKeepApartHolds(pair, cv->points));
+		for (const PlanarKeepApartPair::Candidate &c : pair.candidates) {
+			for (const PlanarKeepApartPair::Row &r : c.rows) cut_rows += r.p_cross[0] != UINT32_MAX || r.q_cross[0] != UINT32_MAX;
+		}
+		if (pair.tag != "sep 4 3 6") continue;
+		found = true;
+		REQUIRE(pair.walk_strict >= 0);
+		/* The side the strict walk forces holds on the cut walls. */
+		CHECK(CandidateMargin(pair.candidates[pair.walk_strict], cv->points) >= 0);
+	}
+	CHECK(found);
+	CHECK(cut_rows > 0);
 }
 
 TEST_CASE("planar domain: X2 loads and its base is legal", "[junction][planar][planardomain]")
@@ -4216,7 +4246,7 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 			for (const auto &cand : pair.candidates) {
 				jo << "  cand s(" << cand.s[0] << "," << cand.s[1] << ") spacing " << cand.spacing << ":";
 				for (const auto &r : cand.rows) {
-					const auto &a = c.points[r.p[0]][r.p[1]], &b = c.points[r.q[0]][r.q[1]];
+					const auto a = PlanarKeepApartEnd(r, false, c.points), b = PlanarKeepApartEnd(r, true, c.points);
 					jo << " [" << pt(r.q) << "-" << pt(r.p) << " -> " << cand.s[0] * (b[0] - a[0]) + cand.s[1] * (b[1] - a[1]) << "]";
 				}
 				jo << "\n";
