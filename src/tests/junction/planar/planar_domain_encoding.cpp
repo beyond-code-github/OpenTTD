@@ -19,6 +19,7 @@
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
 
+#include <bit>
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -1406,6 +1407,101 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 	};
 }
 
+/** Sides measurement (D431): per keep-apart side rule, the pairs it forces on the legal drawings and the pairs where the forced candidate fails. */
+struct SideRule {
+	size_t forced = 0;
+	size_t failed = 0;
+	std::vector<std::string> first;
+};
+struct SideStats {
+	size_t polylines = 0;
+	size_t pairs = 0; ///< Pairs with rows.
+	size_t two_way = 0; ///< Pairs whose inward mask holds two candidates (not forced).
+	SideRule walk, strict, facing, both, inward;
+};
+SideStats *g_sides_stats = nullptr;
+
+/** The least over a candidate's rows of s . (q - p) - spacing on the points. */
+int CandidateMargin(const PlanarKeepApartPair::Candidate &c, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	int margin = INT_MAX;
+	for (const PlanarKeepApartPair::Row &r : c.rows) {
+		const std::array<int, 2> &p = points[r.p[0]][r.p[1]];
+		const std::array<int, 2> &q = points[r.q[0]][r.q[1]];
+		margin = std::min(margin, c.s[0] * (q[0] - p[0]) + c.s[1] * (q[1] - p[1]) - c.spacing);
+	}
+	return margin;
+}
+
+/** Add one drawing's pairs to the stats. */
+void SidesAccumulate(SideStats &st, const X1Fixture &f, const std::string &pkey, const std::vector<PlanarKeepApartPair> &pairs, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	st.polylines++;
+	for (const PlanarKeepApartPair &pair : pairs) {
+		if (!pair.skipped.empty() || pair.candidates.empty()) continue;
+		REQUIRE(pair.candidates.size() == 4);
+		st.pairs++;
+		const auto holds = [&](int c) {
+			PlanarKeepApartPair one = pair;
+			one.candidates = {pair.candidates[c]};
+			return PlanarKeepApartHolds(one, points);
+		};
+		const auto note = [&](SideRule &r, int c, bool ok) {
+			r.forced++;
+			if (ok) return;
+			r.failed++;
+			if (r.first.size() < 5) r.first.push_back(std::format("{} | {} | walls {}/{} pieces {}/{} | candidate {} | margin {}", pair.tag, pkey, pair.tracks[0] < f.n ? f.Name(pair.tracks[0]) : "box", pair.tracks[1] < f.n ? f.Name(pair.tracks[1]) : "box", pair.pieces[0], pair.pieces[1], c, CandidateMargin(pair.candidates[c], points)));
+		};
+		const auto with_tag = [&](SideRule &r, int c) { note(r, c, holds(c)); };
+		bool both_ok = true;
+		bool both_forced = false;
+		for (const auto &[rule, c] : {std::pair<SideRule *, int>{&st.walk, pair.walk}, {&st.strict, pair.walk_strict}, {&st.facing, pair.facing}}) {
+			if (c < 0) continue;
+			with_tag(*rule, c);
+			if (rule != &st.walk) {
+				both_forced = true;
+				both_ok = both_ok && holds(c);
+			}
+		}
+		if (both_forced) {
+			st.both.forced++;
+			if (!both_ok) {
+				st.both.failed++;
+				if (st.both.first.size() < 5) st.both.first.push_back(std::format("{} | {} | strict {} facing {}", pair.tag, pkey, pair.walk_strict, pair.facing));
+			}
+		}
+		const int bits = std::popcount(pair.inward);
+		bool any = false;
+		for (int c = 0; c < 4; c++) any = any || ((pair.inward >> c) & 1) != 0 && holds(c);
+		if (bits == 1) {
+			st.inward.forced++;
+			if (!any) {
+				st.inward.failed++;
+				if (st.inward.first.size() < 5) st.inward.first.push_back(std::format("{} | {} | inward mask {}", pair.tag, pkey, pair.inward));
+			}
+		} else {
+			st.two_way++;
+			if (!any) {
+				st.inward.failed++;
+				if (st.inward.first.size() < 5) st.inward.first.push_back(std::format("{} | {} | inward mask {} (two-way)", pair.tag, pkey, pair.inward));
+			}
+		}
+	}
+}
+
+/** The stats as report text lines. */
+std::string SidesText(const std::string &name, const SideStats &st)
+{
+	std::ostringstream o;
+	const auto pct = [&](size_t n) { return st.pairs == 0 ? 0.0 : 100.0 * static_cast<double>(n) / static_cast<double>(st.pairs); };
+	o << std::format("{}: polylines {} pair-instances {} (inward two-way {})\n", name, st.polylines, st.pairs, st.two_way);
+	for (const auto &[rule, r] : {std::pair<const char *, const SideRule *>{"walk", &st.walk}, {"walk_strict", &st.strict}, {"facing", &st.facing}, {"strict+facing", &st.both}, {"inward(forced=1 cand)", &st.inward}}) {
+		o << std::format("  {}: forced {} ({:.1f}%) failed {}\n", rule, r->forced, pct(r->forced), r->failed);
+		for (const std::string &line : r->first) o << "    " << line << "\n";
+	}
+	return o.str();
+}
+
 /** Judge a polyline's contracted writing against the domain on a fixture's configurations and write the report. */
 void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const RowsJudge &judge, int *base_verdict = nullptr, std::array<uint32_t, 8> *totals = nullptr)
 {
@@ -1531,6 +1627,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						/* Loose off interface: the domain refuses, the full rows refuse, and the rows without the port and box rows accept (report only). */
 						nc.c = accept ? LOOSE : judge(f, *cv, false).accept ? LOOSE_OFF : BOTH_REJECT;
 					}
+					if (nc.c == BOTH_ACCEPT && g_sides_stats != nullptr) SidesAccumulate(*g_sides_stats, f, pkey, ro.keep.keep_apart, cv->points);
 					if (nc.c == STRICT) {
 						/* A too-strict polyline is on the grid by definition. */
 						for (const Points &p : points) REQUIRE(RasterPlanarDomainTrack(p).rule.empty());
@@ -3828,6 +3925,34 @@ std::string Read197File(const std::string &name)
 
 } // namespace
 
+
+TEST_CASE("planar sides: how many keep-apart sides the layout forces, and whether they are always right (D431)", "[.][sidesmeasure]")
+{
+	const char *path_env = std::getenv("PLANAR_SIDES_REPORT");
+	REQUIRE(path_env != nullptr);
+	std::string text;
+	const auto run = [&](const std::string &name, const X1Fixture &f, const std::vector<Config> &configs) {
+		SideStats st;
+		g_sides_stats = &st;
+		std::array<uint32_t, 8> totals{};
+		RunEncoding(f, nullptr, name, configs, "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
+		g_sides_stats = nullptr;
+		text += SidesText(name, st);
+		std::cout << SidesText(name, st) << std::flush;
+	};
+	{ const X1Fixture f; run("X1", f, X1Configs(f)); }
+	{ const X2Fixture f; RequireBaseLegal(f); run("X2", f, X2Configs(f)); }
+	{ const M1Fixture f; RequireBaseLegal(f); run("M1", f, M1Configs(f)); }
+	{ const K1Fixture f; RequireBaseLegal(f); run("K1", f, K1Configs(f)); }
+	{ const L1Fixture f; RequireBaseLegal(f); run("L1", f, L1Configs(f)); }
+	{ const Y1Fixture f; RequireBaseLegal(f); run("Y1", f, Y1Configs(f)); }
+	{ const P1Fixture f; RequireBaseLegal(f); run("P1", f, P1Configs(f)); }
+	{ const BridgeFixture f; RequireBaseLegal(f); run("BR1", f, BR1Configs(f)); }
+	{ const TT1Fixture f; RequireBaseLegal(f); run("TT1", f, StackConfigs(f)); }
+	{ const TS2Fixture f; RequireBaseLegal(f); run("TS2", f, StackConfigs(f)); }
+	std::ofstream(path_env) << text;
+}
+
 TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.][planardomain197]")
 {
 	const char *report_env = std::getenv("PLANAR_DOMAIN_REPORT_197");
@@ -4033,6 +4158,11 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 	const RowsJudge judge = DrawingProgramJudge(DEFAULT_RULES);
 	const RowsVerdict full = judge(f, *cv, true);
 	const Readouts ro = g_last_readouts;
+	if (const char *sides_env = std::getenv("PLANAR_SIDES_197"); sides_env != nullptr) {
+		SideStats st;
+		SidesAccumulate(st, f, "V's 197", ro.keep.keep_apart, cv->points);
+		std::ofstream(sides_env) << std::format("domain legal {} judge accepts {}\n", domain.legal, full.accept) << SidesText("197", st);
+	}
 	struct Refusal {
 		size_t count = 0;
 		std::vector<std::string> first;

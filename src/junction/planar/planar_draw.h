@@ -39,6 +39,10 @@ struct PlanarKeepApartPair {
 	std::string skipped; ///< Empty when rows were written, else the skip reason (the dump's wording).
 	std::string kept; ///< When a strict rule kept a pair the plain rules skip: "strict span", or the strict_zero text the dump writes to `kept`; else empty.
 	std::vector<Candidate> candidates;
+	int walk = -1; ///< With keep_apart_out: the candidate (axis * 2 + side) the sides_by_walk rule forces, or -1. Informational.
+	int walk_strict = -1; ///< With keep_apart_out: the candidate walk_strict (D417) forces, or -1.
+	int facing = -1; ///< With keep_apart_out: the candidate facing_sides (D426) forces (anti-parallel facing walls: 0), or -1; facing walls at another angle choose between the two inward candidates on a reference and force none.
+	uint32_t inward = 0; ///< With keep_apart_out: bit (axis * 2 + side) set for each candidate inward_sides allows.
 };
 
 /** Whether a pair holds on given points (as PlanarDrawResult::points): it is skipped, or every row of one of its candidates holds. */
