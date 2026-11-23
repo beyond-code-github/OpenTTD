@@ -901,7 +901,7 @@ TEST_CASE("planar structure: pinned decisions are refused with a reason", "[junc
 		CHECK(error_of(Parse(PlanarTText(1)), text).find("not authored") != std::string::npos);
 	}
 	SECTION("an unknown statement") {
-		CHECK(error_of(topology, text + "bridge B1 A1\n").find("unknown") != std::string::npos);
+		CHECK(error_of(topology, text + "viaduct B1 A1\n").find("unknown") != std::string::npos);
 	}
 	SECTION("a tunnel naming a non-crossing pair") {
 		REQUIRE(!topology.lines.empty());
@@ -923,4 +923,27 @@ TEST_CASE("planar structure: a written-down hub with no crossings loads", "[junc
 	std::vector<std::string> report;
 	const PlanarStructureVariant v = LoadPlanarStructureVariant(t, "straight ABC1: BC1\nstraight BC1: B1\n", MakeTestJunctionSpec(), report, &error);
 	CHECK(error.empty());
+}
+
+TEST_CASE("planar structure: a bridge statement gives a structure of kind bridge", "[junction][planar][planarstructure]")
+{
+	const std::string topo = "topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N @ 3 5: C1, B1\nport E out E @ 2 4: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n";
+	std::string error;
+	const PlanarTopology t = ParsePlanarTopology(topo, &error);
+	REQUIRE(error.empty());
+	const auto load = [&](const std::string &first) {
+		std::vector<std::string> report;
+		error.clear();
+		return LoadPlanarStructureVariant(t, first + "straight AC1: A1\nstraight BD1: B1\n", MakeTestJunctionSpec(), report, &error);
+	};
+	const PlanarStructureVariant bridge = load("bridge B1 A1: B1\n");
+	CHECK(error.empty());
+	REQUIRE(bridge.structures.size() == 1);
+	CHECK(bridge.structures[0].kinds == 1);
+	const PlanarStructureVariant tunnel = load("tunnel T1 A1: B1\n");
+	CHECK(error.empty());
+	REQUIRE(tunnel.structures.size() == 1);
+	CHECK(tunnel.structures[0].kinds == 2);
+	load("tunnel T1 A1: B1\nbridge T1 A1: B1\n");
+	CHECK(error.find("given twice") != std::string::npos);
 }
