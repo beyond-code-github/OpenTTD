@@ -49,3 +49,10 @@ Reading: a turn-legal S-bend choice EXISTS for T2 (under rows that are, if anyth
 - STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Error 15026 ms, flank rows written 130
 
 Reading: the first conflict (every insert held at 0) is 192 rows naming 20 tracks, nearly the whole hub; freeing their inserts is the full free search again (Error at 15 s, empty conflict). The LP conflict does not localise the missing S-bends on T2, so conflict-driven proposals do not get past round 1, before keep-apart is even reached.
+
+## Legal T2 by CP-SAT, and node flanks (2026-11-24)
+- T2 stage A with EVERY keep-apart row (7780 side binaries), flank rows, grid on, coord_max 128: CP-SAT feasible in 92 s (rerun 189 s); with coord 4096 and the objective: unknown at 180 s. HiGHS with CP-SAT's S-bend choice locked: Error 15 s (the side binaries); HiGHS with CP-SAT's full solution as start (start_all): Optimal 1.0 s.
+- The independent turn check refuses that drawing: node 10 F8 (D1, E1 arrive h2), node 11 F6 (prio:E2 h4 vs ED2 h2); stage B listing Infeasible. Cause: a leg's node-side piece (Shape's one-eighth node turn) may be 0; the flank rows cover inserts only, and beside legs not at all.
+- node_flank (probe option): every track end at a node keeps its end piece >= its least length (V's 197: 36 of 36). T1 stage A (flank + node_flank, no keep-apart): HiGHS Error 15 s; CP-SAT OPTIMAL (feasible) in 0.06 s. T2: HiGHS Error 15 s.
+
+Reading: on this problem class HiGHS is the bottleneck (T1: 0.06 s CP-SAT vs no incumbent in 15 s).
