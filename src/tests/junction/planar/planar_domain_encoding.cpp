@@ -6660,6 +6660,100 @@ TEST_CASE("planar slots: T2 contracted node turns (step 2a)", "[.][slotsstep2dia
 	std::cout << out.str() << std::flush;
 }
 
+/** Stage B's options on a contracted variant (the slots probe and the contraction pin share them): `sb` is the solve, `listing` the same with the keep-apart pairs listed and no rows. The reference vectors are the caller's. */
+static void StageBOptions(const X1Fixture &fb, const Contracted &cv, const std::vector<std::vector<double>> &ref_port_zero, const std::vector<std::vector<double>> &ref_along, PlanarDrawOptions &sb, PlanarDrawOptions &listing)
+{
+	int biggest = 0;
+	for (const auto &track : cv.points) {
+		for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+	}
+	sb = SlotsOptions(fb, DEFAULT_RULES);
+	sb.port_zero_from = &ref_port_zero;
+	sb.node_gap_from = &ref_port_zero;
+	sb.along_from = &ref_along;
+	sb.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+	sb.tidy = false;
+	listing = sb;
+	listing.keep_apart_out = true;
+	listing.only_pairs_on = true;
+}
+
+/** The invariant (slots step 2 pin): every row of stage B's program holds on the contracted points of a stage A drawing (fixed points, no solve). The drawings are the fixtures `t1-stagea.drawing.txt` and `t2-stagea.drawing.txt` (PLANAR_STAGEA_SAVE of the slots probe). */
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T1, T2)", "[junction][planardraw][contraction][!shouldfail]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	for (const std::string name : {"T1", "T2"}) {
+		std::string error, why;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!sr.variants.empty());
+		PlanarShapeVariant base;
+		REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+		PlanarShapeVariant v = base;
+		REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+
+		X1Fixture fa(v);
+		Geometry g;
+		std::map<std::string, std::vector<int>> heads;
+		{
+			std::string lower = name;
+			lower[0] = 't';
+			std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + lower + "-stagea.drawing.txt");
+			REQUIRE(in.good());
+			std::string word, track_name;
+			while (in >> word) {
+				REQUIRE(word == "track");
+				int x, y;
+				in >> track_name >> x >> y;
+				fa.starts[track_name] = {x, y};
+				std::string rest;
+				std::getline(in, rest);
+				std::istringstream lens(rest);
+				uint32_t k = 0;
+				for (int len; lens >> len; k++) g[track_name][k] = len;
+			}
+			for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+			fa.SetUp(heads, g);
+		}
+		const std::optional<Contracted> cv = ContractedVariant(fa, g);
+		REQUIRE(cv.has_value());
+		PlanarShapeVariant plain = cv->v;
+		for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+		Contracted plain_cv;
+		plain_cv.v = plain;
+		plain_cv.points = cv->points;
+		X1Fixture fb(plain);
+		const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
+		const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
+		PlanarDrawOptions sb, listing;
+		StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
+		sb.build_only = true;
+		sb.program_out = true;
+		const PlanarDrawResult result = CheckPlanarDrawable(plain, 15.0, sb);
+		INFO(name << " stage B program status: " << result.status);
+		CHECK(result.status == "built");
+		if (result.status != "built") continue;
+		const PlanarProgramCheck check = CheckPlanarProgramOnPoints(result.program, cv->points);
+		std::string tags;
+		for (const std::string &tag : check.broken) tags += "\n  " + tag;
+		INFO(name << " broken rows (" << check.broken.size() << "):" << tags);
+		CHECK(check.broken.empty());
+	}
+}
+
 /** Slots step 2b (measurement): stage B from the suite's own contraction (ContractedVariant) of stage A's drawing, on T1 and T2. */
 TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 (step 2b)", "[.][slotsstep2]")
 {
@@ -6955,6 +7049,14 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				g[fa.Name(t)][k] = static_cast<int>(std::lround(a.lengths[t][k]));
 			}
 		}
+		if (const char *save = std::getenv("PLANAR_STAGEA_SAVE"); save != nullptr) {
+			std::ofstream sf(save);
+			for (uint32_t t = 0; t < fa.n; t++) {
+				sf << "track " << fa.Name(t) << " " << a.points[t].front()[0] << " " << a.points[t].front()[1];
+				for (const auto &[k, len] : g[fa.Name(t)]) sf << " " << len;
+				sf << "\n";
+			}
+		}
 		/* The fixture reads the drawing: V's headings, the drawing's start points and lengths (as the answer-key test does). */
 		{
 			std::map<std::string, std::vector<int>> heads;
@@ -7009,19 +7111,8 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		/* Stage B on the contracted variant. */
 		const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
 		const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
-		int biggest = 0;
-		for (const auto &track : cv->points) {
-			for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
-		}
-		PlanarDrawOptions sb = SlotsOptions(fb, DEFAULT_RULES);
-		sb.port_zero_from = &ref_port_zero;
-		sb.node_gap_from = &ref_port_zero;
-		sb.along_from = &ref_along;
-		sb.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
-		sb.tidy = false;
-		PlanarDrawOptions listing = sb;
-		listing.keep_apart_out = true;
-		listing.only_pairs_on = true;
+		PlanarDrawOptions sb, listing;
+		StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
 		const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
 		out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
 		flush();
