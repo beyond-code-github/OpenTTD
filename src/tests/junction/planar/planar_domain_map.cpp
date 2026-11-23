@@ -136,3 +136,31 @@ TEST_CASE("planar domain: a drawing's input from its variant", "[junction][plana
 		CHECK(rules.count("diamond") == 1);
 	}
 }
+
+TEST_CASE("planar domain: a node tile the separator and its crosser share is not a crossing", "[junction][planar][planardomain]")
+{
+	/* X1's A1 and C1 leave one split (AC1). C1 steps south-east off the node's tile, runs east and comes back north-east, passing A1's tunnel mid-run (tiles (5,2) and (6,2)); both tracks lie on the node's tile (2,2) at piece 0. That shared tile is where the two meet, not a crossing: the structure stays, with its end runs outside the real crossing (V's PSG 197 L4/L5 at game (81..82,173), L69/L70 at (104,180)). */
+	PlanarShapeVariant v = LoadX1();
+	const uint32_t a1 = Index(v, "A1"), c1 = Index(v, "C1");
+	REQUIRE(v.structure.structures.size() == 1);
+	v.structure.structures[0].crossers = {c1};
+	std::vector<Points> points(6);
+	points[Index(v, "AC1")] = {{0, 5}, {4, 5}};
+	points[a1] = {{4, 5}, {20, 5}};
+	points[c1] = {{4, 5}, {6, 7}, {10, 7}, {14, 3}};
+	points[Index(v, "BD1")] = {{41, 12}, {41, 10}};
+	points[Index(v, "B1")] = {{41, 10}, {41, 0}};
+	points[Index(v, "D1")] = {{41, 10}, {42, 9}, {50, 9}};
+	std::vector<std::string> notes;
+	const PlanarDomainInput in = PlanarDomainInputOf(v, points, notes);
+	CHECK(notes.empty());
+	REQUIRE(in.structures.size() == 1);
+	CHECK(in.structures[0].separator == a1);
+	CHECK(in.structures[0].first == 1);
+	CHECK(in.structures[0].last == 6);
+	const PlanarDomainVerdict d = CheckPlanarDomain(in);
+	std::string text;
+	for (const PlanarDomainBreak &b : d.breaks) text += b.rule + ": " + b.why + "\n";
+	INFO(text);
+	CHECK(d.legal);
+}

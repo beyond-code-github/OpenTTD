@@ -1625,3 +1625,50 @@ TEST_CASE("domain pin 7 (rule 6): a tunnel's portal and ramp are exclusive", "[j
 	input.structures[0].crossers.clear();
 	CHECK(DomainRules(input) == "head");
 }
+
+TEST_CASE("domain pin 8 (D390 (2)): two tunnels at different depths cross on one tile; the domain allows it", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	PrepareDomainMap();
+	/* Ground at height 4. The X tunnel along row 4 runs at level 3 (portal outer corners lowered to 3), middle tile c = 4. The Y tunnel along column c runs at level 2 (portal outer corners lowered to 2, the inner ones to 3): it passes beneath the X tunnel's middle tile. V's PSG 197 has L30/L31 under L32/L47/L48 at game tiles (91..93,163..164). */
+	const int c = 4, row = 4;
+	const DomainPoints separator = DomainLay({0, row}, Trackdir::X_SW, "FFFFFFFFF");
+	const DomainPoints crosser = DomainLay({c, 0}, Trackdir::Y_SE, "FFFFFFFFFF");
+	for (int dy : {0, 1}) {
+		SetTileHeight(DomainTile(c - 1, row + dy), 3);
+		SetTileHeight(DomainTile(c + 2, row + dy), 3);
+	}
+	for (int dx : {0, 1}) {
+		SetTileHeight(DomainTile(c + dx, row - 2), 2);
+		SetTileHeight(DomainTile(c + dx, row - 1), 3);
+		SetTileHeight(DomainTile(c + dx, row + 2), 3);
+		SetTileHeight(DomainTile(c + dx, row + 3), 2);
+	}
+	const TileIndex x_start = DomainTile(c - 1, row);
+	const CommandCost x_tunnel = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, x_start, TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("X tunnel: error " << x_tunnel.GetErrorMessage().base());
+	REQUIRE(x_tunnel.Succeeded());
+	CHECK(_build_tunnel_endtile == DomainTile(c + 1, row));
+	const TileIndex y_start = DomainTile(c, row - 2);
+	const CommandCost y_tunnel = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, y_start, TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	INFO("Y tunnel under the X tunnel: error " << y_tunnel.GetErrorMessage().base());
+	CHECK(y_tunnel.Succeeded());
+	CHECK(_build_tunnel_endtile == DomainTile(c, row + 2));
+	/* The domain: each is a tunnel structure with two end pieces at each end and lists the other as its crosser. */
+	PlanarDomainInput input;
+	input.tracks = {separator, crosser};
+	PlanarDomainStructure x;
+	x.separator = 0;
+	x.first = c - 2;
+	x.last = c + 2;
+	x.tunnel = true;
+	x.ends = 2;
+	x.crossers = {1};
+	PlanarDomainStructure y = x;
+	y.separator = 1;
+	y.first = row - 3;
+	y.last = row + 3;
+	y.crossers = {0};
+	input.structures = {x, y};
+	CHECK(DomainRules(input).empty());
+}

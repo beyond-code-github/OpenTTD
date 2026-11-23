@@ -289,6 +289,24 @@ TEST_CASE("planar domain: hand cases from the game", "[junction][planar][planard
 		ExpectLegal(input);
 	}
 
+	SECTION("8b legal: a listed crossing between two tunnels' middles is realised by depth (D390 (2); V's PSG 197 L30/L31 under L32/L47/L48, game tiles (91..93,163..164))") {
+		const Laid tunnel_x = Lay({0, 2}, Trackdir::X_SW, "FFT2FF");
+		const Laid tunnel_y = Lay({4, -1}, Trackdir::Y_SE, "FT2F");
+		PlanarDomainInput input;
+		input.tracks = {tunnel_x.points, tunnel_y.points};
+		input.structures = {StructureOn(tunnel_x, 0, true, {1}), StructureOn(tunnel_y, 1, true, {0})};
+		ExpectLegal(input);
+	}
+
+	SECTION("8c illegal: a listed crossing between two bridges' middles stays refused") {
+		const Laid a = Lay({0, 2}, Trackdir::X_SW, "FFB2FF");
+		const Laid b = Lay({4, -1}, Trackdir::Y_SE, "FB2F");
+		PlanarDomainInput input;
+		input.tracks = {a.points, b.points};
+		input.structures = {StructureOn(a, 0, false, {1}), StructureOn(b, 1, false, {0})};
+		ExpectBreaks(input, {"decks", "missing crossing"});
+	}
+
 	SECTION("9 illegal: an X and a Y track cross at grade") {
 		PlanarDomainInput input;
 		input.tracks = {Lay({0, 2}, Trackdir::X_SW, "FFFF").points, Lay({2, 0}, Trackdir::Y_SE, "FFFF").points};

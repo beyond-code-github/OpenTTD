@@ -1,16 +1,13 @@
 tracks 101 mapped 101 unmapped 0
 box low corner, rounded down to even (156, 274)
 geometry connected at the nodes: yes; end pins not met: 2
-domain on V's points: NOT legal, 64 breaks, 3 notes
-  note: structure 11 (L5): no room for its end runs
-  note: structure 43 (L61): no room for its end runs
-  note: structure 48 (L70): no room for its end runs
-  domain rule connection: 19
+domain on V's points: NOT legal, 55 breaks, 0 notes
+  domain rule connection: 17
   domain rule diamond: 16
   domain rule head: 2
-  domain rule missing crossing: 10
+  domain rule missing crossing: 2
   domain rule node: 4
-  domain rule span: 13
+  domain rule span: 14
   break span tile (15,24) tracks L48: the structure on pieces 3..17 is not a straight run of 1 to 64 middles
   break span tile (26,27) tracks L80: the structure on pieces 1..6 is not a straight run of 1 to 64 middles
   break span tile (14,29) tracks L45: the structure on pieces 1..6 is not a straight run of 1 to 64 middles
@@ -24,11 +21,11 @@ domain on V's points: NOT legal, 64 breaks, 3 notes
   break span tile (20,36) tracks L60: the structure on pieces 19..28 is not a straight run of 1 to 64 middles
   break span tile (16,38) tracks L48: the structure on pieces 18..27 is not a straight run of 1 to 64 middles
   break span tile (15,43) tracks L49: the structure on pieces 6..10 is not a straight run of 1 to 64 middles
+  break span tile (22,46) tracks L70: the structure on pieces 7..11 is not a straight run of 1 to 64 middles
   break node tile (27,42) tracks L69: track 71 is listed in `out` but does not start at (54, 85)
   break node tile (27,42) tracks L70: track 79 is listed in `out` but does not start at (54, 85)
   break node tile (51,36) tracks L96: track 99 is listed in `out` but does not start at (102, 73)
   break node tile (51,36) tracks L94: track 98 is listed in `out` but does not start at (102, 73)
-  break connection tile (4,25) tracks L4 L5: 4 track ends meet at (9, 50) with no node
   break connection tile (12,34) tracks L11 L37: 4 track ends meet at (24, 69) with no node
   break connection tile (13,35) tracks L12 L37: 4 track ends meet at (26, 71) with no node
 counts: tracks 101, raw pieces 265, contracted pieces 262, unmapped 0; contraction moved 0, turn-rejected 0

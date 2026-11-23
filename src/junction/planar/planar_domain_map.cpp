@@ -85,7 +85,19 @@ static void AddStructure(const PlanarShapeVariant &v, PlanarDomainInput &input, 
 			notes.push_back(fmt::format("{}: raster: {}", head, cr.rule));
 			return;
 		}
+		/* The tile of a node the two tracks share (a split or merge both list) is where they meet, not a crossing. */
+		std::vector<TileIndexDiffC> node_tiles;
+		for (const PlanarDomainNode &n : input.nodes) {
+			const bool sep_out = std::find(n.out.begin(), n.out.end(), s.separator) != n.out.end();
+			const bool sep_in = std::find(n.in.begin(), n.in.end(), s.separator) != n.in.end();
+			const bool cr_out = std::find(n.out.begin(), n.out.end(), c) != n.out.end();
+			const bool cr_in = std::find(n.in.begin(), n.in.end(), c) != n.in.end();
+			if (!(sep_out || sep_in) || !(cr_out || cr_in) || sep.pieces.empty()) continue;
+			node_tiles.push_back(sep_out ? sep.pieces.front().tile : sep.pieces.back().tile);
+		}
 		for (size_t i = 0; i < sep.pieces.size(); i++) {
+			const bool at_node = std::any_of(node_tiles.begin(), node_tiles.end(), [&](const TileIndexDiffC &t) { return t.x == sep.pieces[i].tile.x && t.y == sep.pieces[i].tile.y; });
+			if (at_node) continue;
 			for (const PlanarDomainPiece &p : cr.pieces) {
 				if (p.tile.x == sep.pieces[i].tile.x && p.tile.y == sep.pieces[i].tile.y) met[i] = true;
 			}
