@@ -34,7 +34,7 @@ struct PlanarShapeTrack {
 struct PlanarShapeStructure {
 	uint8_t axis; ///< The axis heading (eighths, even) its separator holds from the first to the last crossing.
 	std::array<int, 2> middles; ///< The least middle tiles per kind at the chosen angles (index 0 bridge, 1 tunnel; -1 for a kind the structure does not allow).
-	std::array<int, 2> end_run; ///< The straight end-run tiles per kind (bridge: the head; tunnel: portal and ramp; -1 for a kind the structure does not allow).
+	std::array<int, 2> end_run; ///< The straight end-run pieces per kind (bridge: the head; tunnel: the portal, the ground outside one level lower (D437); -1 for a kind the structure does not allow).
 	std::array<int, 2> copy_middles = {-1, -1}; ///< The least middle tiles of the copy's deck per kind at its chosen angles (-1 for a kind not allowed, or no copy).
 };
 

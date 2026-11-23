@@ -651,7 +651,7 @@ struct Oracle {
 			}
 			const PlanarShapeStructure &shape = this->v.structures[i];
 			if (same && piece != UINT32_MAX && (sep.pieces[piece] % 8 + 8) % 8 != shape.axis) this->out.push_back(fmt::format("H5: structure {} has axis {}, its separator's crossing piece heads {}", i, shape.axis, sep.pieces[piece]));
-			const std::array<int, 2> end_run = {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1};
+			const std::array<int, 2> end_run = {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 1 : -1};
 			if (shape.end_run != end_run) this->out.push_back(fmt::format("H5: structure {} has end runs {}, {}; its kinds give {}, {}", i, shape.end_run[0], shape.end_run[1], end_run[0], end_run[1]));
 
 			/* H6: the least middles from the headings, run by run. */
@@ -1345,7 +1345,7 @@ static bool ShapeStructures(PlanarShapeVariant &sv, std::string &why)
 	const Oracle o(sv);
 	sv.structures.clear();
 	for (const PlanarStructure &s : sv.structure.structures) {
-		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 2 : -1}};
+		PlanarShapeStructure shape{0, {-1, -1}, {(s.kinds & 1) != 0 ? 1 : -1, (s.kinds & 2) != 0 ? 1 : -1}};
 		if (!s.crossings.empty()) shape.axis = static_cast<uint8_t>((o.EventHeading(s.separator, EventIndex(map.events[s.separator], s.crossings.front())) % 8 + 8) % 8);
 		int least;
 		if (!o.Least(s.separator, s.crossings, s.crossers, least)) {
