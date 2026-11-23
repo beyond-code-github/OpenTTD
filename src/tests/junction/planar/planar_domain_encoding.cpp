@@ -4540,6 +4540,151 @@ TEST_CASE("planar shape: TS2 with lattice flex", "[.][shapeprobe]")
 	}
 }
 
+/** Shape-4 probe: TS2 with flex placed, no cell refinement, keep-apart only through the pairwise rows. */
+TEST_CASE("planar shape: TS2 with only suite-judged rows", "[.][shapeprobe]")
+{
+	const auto topo_of = [](int n) {
+		std::string at;
+		if (n > 0) at = std::format(" @ 1 {} {}", 1 + n, 1 + 2 * n);
+		return "topology TS2\nport W in E: AB1, AB2, AB3\nport N out N" + at + ": A1, A2, A3\nport E out E: B1, B2, B3\nnode AB1 -> A1, B1\nnode AB2 -> A2, B2\nnode AB3 -> A3, B3\ncross B1: A2<, A3<\ncross B2: A3<\ncross A2: B1>\ncross A3: B2>, B1>\n";
+	};
+	const std::string structure = "tunnel T1 B1: A2, A3\ntunnel T2 B2: A3\nstraight AB1: B1\nstraight AB2: B2\nstraight AB3: B3\n";
+	const std::string text = "shape AB1: 2\nshape AB2: 2\nshape AB3: 2\nshape A1: 1 0\nshape A2: 1 0\nshape A3: 1 0\nshape B1: 2\nshape B2: 2\nshape B3: 2\nat A2: B1@0\nat A3: B2@0, B1@0\nat B1: A2@0, A3@0\nat B2: A3@0\n";
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	PlanarDrawOptions o;
+	o.corridor = true;
+	o.end_node = o.cross_piece = o.grid = true;
+	o.strict_zero = o.crossing_flanks = false;
+	o.node_lead = true;
+	o.tidy = true;
+	o.elastic = false;
+	o.least_extra = 0;
+	o.pairwise = o.pairwise_all_faces = true;
+	/* Per spacing: the topology, both variants flex-stripped then flex placed (lattice clause as production), no cells. */
+	const auto build = [&](int n, PlanarTopology &t, PlanarStructureVariant &s, PlanarShapeVariant &base, PlanarShapeVariant &alt) {
+		std::string error, why;
+		t = ParsePlanarTopology(topo_of(n), &error);
+		REQUIRE(error.empty());
+		std::vector<std::string> report;
+		s = LoadPlanarStructureVariant(t, structure, spec, report, &error);
+		REQUIRE(error.empty());
+		REQUIRE(ShapePlanarStructureVariant(s, base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+			track.steps.clear();
+		}
+		REQUIRE(LoadPlanarShapeVariant(t, s, text, alt, why));
+		REQUIRE(PlacePlanarShapeFlex(base, why, true));
+		REQUIRE(PlacePlanarShapeFlex(alt, why, true));
+	};
+	const auto flex_count = [](const PlanarShapeVariant &x) {
+		size_t f = 0;
+		for (const PlanarShapeTrack &tr : x.tracks) f += tr.flex.size();
+		return f;
+	};
+	const auto draw = [&](const std::string &label, const PlanarShapeVariant &x, const PlanarDrawOptions &opt) {
+		const PlanarDrawResult r = CheckPlanarDrawable(x, 15.0, opt);
+		size_t used = 0;
+		std::string line = std::format("DRAW {} status {} ms {} rows {} columns {}", label, r.status, static_cast<int>(r.ms), r.rows, r.columns);
+		if (r.status == "Optimal") {
+			for (uint32_t k = 0; k < x.tracks.size(); k++) {
+				for (const uint32_t m : x.tracks[k].flex) {
+					if (r.lengths[k][m] > 1e-6) used++;
+				}
+				line += std::format("\n  {}:", x.structure.map.tracks[k].name);
+				for (const Point &p : r.points[k]) line += std::format(" ({},{})", p[0], p[1]);
+			}
+			std::vector<std::string> notes;
+			const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(x, r.points, notes));
+			line += std::format("\n  DOMAIN legal {} notes {}", d.legal, notes.size());
+			for (const std::string &m : notes) line += "\n    note: " + m;
+			for (const PlanarDomainBreak &b : d.breaks) line += std::format("\n    break: {} tile ({},{}) {}", b.rule, b.tile.x, b.tile.y, b.why);
+			/* The same drawing moved two half tiles right and down (a tile of margin; parity kept). */
+			std::vector<std::vector<std::array<int, 2>>> moved = r.points;
+			for (auto &tr : moved) {
+				for (auto &q : tr) {
+					q[0] += 2;
+					q[1] += 2;
+				}
+			}
+			std::vector<std::string> notes2;
+			const PlanarDomainVerdict d2 = CheckPlanarDomain(PlanarDomainInputOf(x, moved, notes2));
+			line += std::format("\n  DOMAIN moved (+2,+2) legal {} notes {} breaks {}", d2.legal, notes2.size(), d2.breaks.size());
+			for (const PlanarDomainBreak &b : d2.breaks) line += std::format("\n    break: {} tile ({},{}) {}", b.rule, b.tile.x, b.tile.y, b.why);
+		}
+		std::cout << line << "\nUSED " << label << " " << used << "\n";
+		return r;
+	};
+	PlanarTopology t;
+	PlanarStructureVariant s;
+	PlanarShapeVariant base, alt;
+	build(0, t, s, base, alt);
+	std::cout << std::format("FLEX placed base {} alt {}\n", flex_count(base), flex_count(alt));
+	/* Step 1: the tag families of the program as written. */
+	for (const bool is_alt : {false, true}) {
+		PlanarDrawOptions b = o;
+		b.program_out = b.build_only = true;
+		const PlanarDrawResult r = CheckPlanarDrawable(is_alt ? alt : base, 15.0, b);
+		std::map<std::string, size_t> families;
+		for (const PlanarProgram::Row &row : r.program.rows) families[row.tag.substr(0, row.tag.find(' '))]++;
+		std::string line = std::format("FAMILIES {} status {} rows {} dummies {}:", is_alt ? "45" : "90", r.status, r.program.rows.size(), (is_alt ? alt : base).dummies.size());
+		for (const auto &[f, c] : families) line += std::format(" {}={}", f, c);
+		std::cout << line << "\n";
+	}
+	/* Step 2. */
+	const PlanarDrawResult r90 = draw("90 default", base, o);
+	const PlanarDrawResult r45 = draw("45 default", alt, o);
+	if (r90.status == "Optimal" || r45.status == "Optimal") return;
+	/* Step 3: the smallest spacing at 45 degrees. */
+	for (const int n : {1, 2, 3}) {
+		PlanarShapeVariant b2, a2;
+		PlanarTopology t2;
+		PlanarStructureVariant s2;
+		build(n, t2, s2, b2, a2);
+		const PlanarDrawResult r = draw(std::format("45 spacing {}", n), a2, o);
+		if (r.status == "Optimal") break;
+	}
+	/* The conflict at the default spacing, by family deletion (at most 20 solves). */
+	for (const bool is_alt : {false, true}) {
+		const PlanarShapeVariant &x = is_alt ? alt : base;
+		const PlanarDrawResult first = CheckPlanarDrawable(x, 15.0, o);
+		std::vector<std::string> families;
+		std::cout << (is_alt ? "CONFLICT 45 first (" : "CONFLICT 90 first (") << first.conflict.size() << "):";
+		for (const std::string &c : first.conflict) {
+			std::cout << " [" << c << "]";
+			const std::string f = c.substr(0, c.find(' '));
+			if (std::ranges::find(families, f) == families.end()) families.push_back(f);
+		}
+		std::cout << "\n";
+		int solves = 0;
+		std::vector<std::string> dropped;
+		for (const std::string &f : families) {
+			if (solves >= 20) break;
+			PlanarDrawOptions fo = o;
+			fo.skip_rows = dropped;
+			fo.skip_rows.push_back(f + " ");
+			const PlanarDrawResult r = CheckPlanarDrawable(x, 15.0, fo);
+			solves++;
+			std::cout << std::format("FAMFILTER {} skip family [{}] -> {} {} ms\n", is_alt ? "45" : "90", f, r.status, static_cast<int>(r.ms));
+			if (r.status == "Infeasible") dropped.push_back(f + " ");
+		}
+		std::cout << "FAMILIES NEEDED " << (is_alt ? "45" : "90") << " after " << solves << " solves:";
+		for (const std::string &f : families) {
+			if (std::ranges::find(dropped, f + " ") == dropped.end()) std::cout << " [" << f << "]";
+		}
+		std::cout << "\n";
+	}
+}
+
 TEST_CASE("planar domain: a curve may come right up to a tunnel's portal (D437)", "[junction][planar][planardomain]")
 {
 	/* TT1's B1 (the separator of T2) crosses A1 at its third tile (x = 5, by a NW step before and a NE step after), the same polyline as BR1's: the first piece outside the crossing's run is the diagonal. A tunnel's end run is the portal alone (one piece, D437; the ground outside it is lower), so a diagonal starting one piece from the crossing's middle fits: the judge and the domain accept. The same curve one tile closer to the crossing (the diagonal starting at the portal piece itself, end run 0) is refused by both. */

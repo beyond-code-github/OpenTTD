@@ -59,3 +59,29 @@ Conflicts with flex offered (lattice off), first conflict of the solver:
 Reading:
 - Offering S-bends on every stretch does not make TS2 drawable at the default spacing at 90 or at 45 degrees, and at these two shapes the lattice clause is not the limit (the placement is the same).
 - At 45 degrees the N gaps of A2 and A3 are each individually sufficient to remove (as in shape-2: the one-tile N port gap is the binding row); whether a wider N gap alone makes it Optimal with flex is not tried.
+
+## no cells (shape-4 probe)
+
+Head 8ac4078e9b on wt-e1. Hidden test `planar shape: TS2 with only suite-judged rows` `[.][shapeprobe]` in `planar_domain_encoding.cpp` (Release `build-rel`). Variants as in shape-3 (Shape's base and the 45-degree variant, flex-stripped, then `PlacePlanarShapeFlex(v, why, true)`: flex C, lattice clause as production, 34 pairs each), NO `RefinePlanarShapeCells`. Options as DrawnFixture's (corridor, end_node, cross_piece, node_lead, grid, tidy, `least_extra = 0`, elastic off) plus `pairwise = true`, `pairwise_all_faces = true` (clearance and clear_rows at their default true; with pairwise no dummies and no landings are written, and with all faces no cell clearance rows). The Shape base variant carries 3 dummies from Shape; the program does not write them.
+
+Tag families of the program as written (`program_out`, `build_only`, tag up to the first space):
+- 90 degrees (6496 rows): box 178, cross 27, curve 3, deck 1, end 6, flex 9, grid 107, lead 8, node 12, order 1, piece 160, port 15, sep 5616, sepdir 351, span 2.
+- 45 degrees (7349 rows): the same, lead 11, sep 6416, sepdir 401.
+None is `clear`, `room`, `land` or `dummy`; no option or code change was needed.
+
+Solves at the default spacing (15 s cap):
+
+| variant | status | ms | rows x columns | inserts used |
+|---|---|---|---|---|
+| 90 degrees | Optimal | 1611 | 6496 x 1783 | 9 of 34 |
+| 45 degrees | Optimal | 1838 | 7349 x 1983 | 4 of 34 |
+
+Domain verdict (`CheckPlanarDomain(PlanarDomainInputOf(...))` on the drawn points): both ILLEGAL, with notes "structure 0 (B1): raster: grid" and "structure 1 (B2): raster: grid".
+- 90 degrees: 5 `grid` breaks ("the piece to (0,3) / (5,4) / (4,7) / (5,4) / (7,6) does not join two edges of one tile") and 5 `node` breaks ("track N is listed in `out` but does not start at (0,5)", the node points of AB1, AB2, AB3, for A1-A3 and B1-B3).
+- 45 degrees: 3 `grid` breaks (pieces to (3,2), (2,3), (8,3)) and 3 `node` breaks (A1, A2, A3 not starting at the node point).
+- The same drawings moved by (+2,+2) half tiles (a tile of margin) are still illegal: 10 breaks at 90 degrees, 6 at 45 degrees, the same two kinds.
+Examples read off the drawings: B1 at 90 degrees has a one-half-tile diagonal piece (2,5)-(3,4); A1 has a vertical run at x = 0 (the box edge). Steps 3 (smaller spacing, conflict by family deletion) were not run: both variants are Optimal, the brief runs them only if both are Infeasible.
+
+Reading:
+- With only the suite-judged keep-apart rows (pairwise on all faces, no cell rows) TS2 is Optimal at the default spacing at 90 and at 45 degrees with flex offered, in under 2 s: the Infeasible of shape-2 and shape-3 came from the cell-era rows (`clear`, `room`, `land`), not from the angle or the spacing.
+- The program's drawing is not domain-legal, though: the grid (the pieces that do not join two edges of a tile, from the program's half-tile diagonals) and the node points (the three A lines do not start at their nodes' tile points) are rows the program does not yet carry or carries as the domain does not read them; the next question is which program rows these breaks correspond to, not whether the keep-apart is satisfiable.
