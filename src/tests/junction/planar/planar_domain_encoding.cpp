@@ -1619,6 +1619,362 @@ std::string SidesText(const std::string &name, const SideStats &st)
 	return o.str();
 }
 
+/** cells-1 measurement (D385 revisited over contracted lines): per fixture, the convex cells RefinePlanarShapeCells makes on a drawing's contracted variant and the cell rows judged on the drawing's points. */
+struct CellStats {
+	size_t drawings = 0, legal = 0, illegal = 0, off_interface = 0;
+	size_t refused = 0, refused_legal = 0; ///< Refinements refused (all drawings, legal ones).
+	std::map<std::string, size_t> refusals; ///< By message.
+	size_t refined = 0, dummies = 0, nonmonotone = 0, cells = 0, drawings_nonmono = 0, max_dummies = 0, fallbacks = 0;
+	size_t unconvex = 0; ///< Refined variants for which CheckPlanarShapeCells reports a breach.
+	std::map<std::string, size_t> unsupported; ///< Cell programs that did not build, by status.
+	size_t built = 0, built_legal = 0, built_illegal = 0;
+	size_t strict = 0; ///< Legal drawings with a broken row.
+	std::map<std::string, size_t> strict_by_family; ///< Legal drawings with a broken row of the family.
+	std::vector<std::string> strict_first;
+	std::map<std::string, size_t> strict_signature; ///< Legal drawings by their set of broken families.
+	size_t pin_native = 0, pin_solved = 0, pin_box = 0, pin_parallel = 0; ///< Dummies whose length and landing parameter were solved here, landing on a box side, with a ray parallel to its landing wall.
+	size_t base_legal_accept = 0; ///< Legal drawings the same program without cells accepts (a check of that counterfactual).
+	size_t keep_only = 0, keep_only_refused = 0; ///< Illegal drawings that the same program without cells or keep-apart rows (every other rule) accepts, so only a keep-apart rule can refuse them; of them those the cell program refuses.
+	std::map<std::string, size_t> undetermined; ///< Built drawings with a row of the family skipped because a variable stayed unknown.
+	size_t refuse_illegal = 0; ///< Illegal drawings the cell program refuses.
+	std::map<std::string, size_t> refuse_illegal_by_family;
+	size_t loose = 0, loose_pairwise_too = 0, loose_off_grid = 0; ///< Illegal drawings the cell program accepts; of them those the pairwise judge also accepts; of them off the grid.
+	std::map<std::string, size_t> loose_by_rule; ///< By the domain rule that refuses (once per drawing).
+	double ms = 0;
+};
+CellStats *g_cells_stats = nullptr;
+std::string g_cells_name;
+
+/** The family of a program row tag: the tag up to its first space, `bound`/`integer` with their group. */
+std::string CellFamilyOf(const std::string &tag)
+{
+	size_t end = tag.find(' ');
+	const std::string first = tag.substr(0, end);
+	if ((first == "bound" || first == "integer") && end != std::string::npos) end = tag.find(' ', end + 1);
+	return tag.substr(0, end);
+}
+
+/** A cell wall as text. */
+std::string CellWallText(const PlanarShapeVariant &v, const PlanarCellWall &w)
+{
+	const auto &map = v.structure.map;
+	if (w.track == UINT32_MAX) return std::format("box {} h{}", w.piece, w.heading);
+	if (w.track == PLANAR_DUMMY_TRACK) {
+		const PlanarShapeDummy &d = v.dummies[w.piece];
+		const std::string land = d.land_track == UINT32_MAX ? std::format("box {}", d.land_piece) : d.land_track == PLANAR_DUMMY_TRACK ? std::format("dummy {}", d.land_piece) : std::format("{} p{}", map.tracks[d.land_track].name, d.land_piece);
+		return std::format("dummy {} (from {} bend after p{}, heading {}, lands on {}) walked h{}", w.piece, map.tracks[d.track].name, d.piece, d.heading, land, w.heading);
+	}
+	return std::format("{} p{} h{}", map.tracks[w.track].name, w.piece, w.heading);
+}
+
+/** Judge the cell program on one drawing's contracted variant. `legal` is the domain's verdict of the drawing, `off_interface` that the judge for it leaves out the port and box rows. */
+void CellsAccumulate(CellStats &st, const X1Fixture &f, const std::string &pkey, const Contracted &cv, const PlanarDomainVerdict &domain, bool off_interface, bool pairwise_accept, bool on_grid)
+{
+	const auto t0 = std::chrono::steady_clock::now();
+	const bool legal = domain.legal;
+	st.drawings++;
+	(legal ? st.legal : st.illegal)++;
+	if (off_interface) st.off_interface++;
+	PlanarShapeVariant vc = cv.v;
+	std::string why;
+	if (!RefinePlanarShapeCells(vc, why)) {
+		st.refused++;
+		if (legal) st.refused_legal++;
+		std::string key = why;
+		for (char &c : key) if (c >= '0' && c <= '9') c = '#';
+		st.refusals[key]++;
+		st.ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+		return;
+	}
+	st.refined++;
+	st.dummies += vc.dummies.size();
+	st.nonmonotone += vc.nonmonotone_dummies;
+	st.fallbacks += vc.landing_fallbacks;
+	if (vc.nonmonotone_dummies > 0) st.drawings_nonmono++;
+	st.max_dummies = std::max(st.max_dummies, vc.dummies.size());
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(vc);
+	st.cells += cells.size();
+	if (const std::vector<std::string> h12 = CheckPlanarShapeCells(vc); !h12.empty()) {
+		st.unconvex++;
+		if (g_cells_name == "197") {
+			std::string text = std::format("197 H12 breaches: {}\n", h12.size());
+			for (size_t i = 0; i < h12.size() && i < 5; i++) text += "    " + h12[i] + "\n";
+			st.strict_first.push_back(text);
+		}
+	}
+
+	/* The cell program: the judge's options with the cell machinery (clearance, clear rows, no pairwise), the default rule set. */
+	const std::vector<std::vector<double>> port_zero_from = PortZeroFrom(cv.points);
+	const std::vector<std::vector<double>> along_from = AlongFrom(cv);
+	PlanarShapeVariant plain = vc;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarDrawOptions o = f.options;
+	o.along_from = &along_from;
+	o.node_lead = true;
+	o.end_node = true;
+	o.cross_piece = true;
+	o.grid = true;
+	o.port_zero = true;
+	o.port_zero_from = &port_zero_from;
+	o.node_gap_from = &port_zero_from;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.clearance = true;
+	o.clear_rows = true;
+	o.pairwise = false;
+	o.pairwise_all_faces = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	if (off_interface) o.skip_rows = {"port ", "box"};
+	const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+	const auto is_span_bend = [](const std::string &status) { return status.starts_with("unsupported: structure ") && status.ends_with("'s crossings sit on different pieces of its separator"); };
+	std::set<std::string> broken_families;
+	std::vector<std::string> broken_tags;
+	if (is_span_bend(r.status)) {
+		broken_families.insert("span");
+	} else if (r.status != "built") {
+		std::string key = r.status;
+		for (char &c : key) if (c >= '0' && c <= '9') c = '#';
+		st.unsupported[key]++;
+		st.ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+		return;
+	}
+	st.built++;
+	(legal ? st.built_legal : st.built_illegal)++;
+	if (!is_span_bend(r.status)) {
+		/* The checker eliminates a variable only from an equality row with one unknown or two rows on the same two unknowns, so a dummy whose ray and landing wall are both diagonal or both off the axes stays undetermined (four rows on its end, its length and the landing parameter). Here the variables the points fix are propagated through the program's equality rows, then each dummy's `land` equalities are solved as a small linear system; a unique solution is written back as equality rows tagged `pinned`. No value is chosen: it is the rows' own solution. A dummy whose equalities leave an unknown (a box side the points do not fix) is left to the checker. */
+		PlanarProgram prog = r.program;
+		prog.plan.reset();
+		{
+			const size_t nv = prog.lower.size();
+			std::vector<double> val(nv, 0);
+			std::vector<bool> known(nv, false);
+			for (size_t t = 0; t < prog.point.size() && t < cv.points.size(); t++) {
+				for (size_t i = 0; i < prog.point[t].size() && i < cv.points[t].size(); i++) {
+					for (int axis = 0; axis < 2; axis++) {
+						val[prog.point[t][i][axis]] = cv.points[t][i][axis];
+						known[prog.point[t][i][axis]] = true;
+					}
+				}
+			}
+			const auto propagate = [&]() {
+				for (bool changed = true; changed;) {
+					changed = false;
+					for (const PlanarProgram::Row &row : prog.rows) {
+						if (row.lower != row.upper) continue;
+						size_t unknown = 0;
+						uint32_t which = 0;
+						double coef = 0, rest = 0;
+						for (const auto &[v, c] : row.terms) {
+							if (c == 0) continue;
+							if (known[v]) {
+								rest += c * val[v];
+							} else {
+								unknown++;
+								which = v;
+								coef += c;
+							}
+						}
+						if (unknown == 0 || coef == 0) continue;
+						bool same = true;
+						for (const auto &[v, c] : row.terms) same = same && (c == 0 || known[v] || v == which);
+						if (!same) continue;
+						val[which] = (row.lower - rest) / coef;
+						known[which] = true;
+						changed = true;
+					}
+				}
+			};
+			propagate();
+			std::set<size_t> solved, native;
+			for (int pass = 0; pass < 3; pass++) {
+				for (size_t d = 0; d < vc.dummies.size(); d++) {
+					const std::string tag = std::format("land {}", d);
+					std::vector<const PlanarProgram::Row *> eqs;
+					std::vector<uint32_t> unk;
+					for (const PlanarProgram::Row &row : prog.rows) {
+						if (row.tag != tag || row.lower != row.upper) continue;
+						eqs.push_back(&row);
+						for (const auto &[v, c] : row.terms) {
+							if (c != 0 && !known[v] && std::ranges::find(unk, v) == unk.end()) unk.push_back(v);
+						}
+					}
+					if (unk.empty()) {
+						if (pass == 0) native.insert(d);
+						continue;
+					}
+					/* Gauss-Jordan on [A | b], unknowns in unk. */
+					std::vector<std::vector<double>> m;
+					for (const PlanarProgram::Row *row : eqs) {
+						std::vector<double> line(unk.size() + 1, 0.0);
+						double rest = 0;
+						for (const auto &[v, c] : row->terms) {
+							if (c == 0) continue;
+							if (known[v]) {
+								rest += c * val[v];
+							} else {
+								line[static_cast<size_t>(std::ranges::find(unk, v) - unk.begin())] += c;
+							}
+						}
+						line.back() = row->lower - rest;
+						m.push_back(std::move(line));
+					}
+					size_t rank = 0;
+					std::vector<size_t> pivot_col;
+					for (size_t col = 0; col < unk.size() && rank < m.size(); col++) {
+						size_t best = rank;
+						for (size_t i = rank; i < m.size(); i++) {
+							if (std::abs(m[i][col]) > std::abs(m[best][col])) best = i;
+						}
+						if (std::abs(m[best][col]) < 1e-9) continue;
+						std::swap(m[rank], m[best]);
+						const double pv = m[rank][col];
+						for (double &x : m[rank]) x /= pv;
+						for (size_t i = 0; i < m.size(); i++) {
+							if (i == rank || std::abs(m[i][col]) < 1e-12) continue;
+							const double fct = m[i][col];
+							for (size_t k = 0; k < m[i].size(); k++) m[i][k] -= fct * m[rank][k];
+						}
+						pivot_col.push_back(col);
+						rank++;
+					}
+					if (rank != unk.size()) continue;
+					bool consistent = true;
+					for (size_t i = rank; i < m.size(); i++) consistent = consistent && std::abs(m[i].back()) < 1e-6;
+					if (!consistent) continue;
+					for (size_t i = 0; i < rank; i++) {
+						const uint32_t var = unk[pivot_col[i]];
+						val[var] = m[i].back();
+						known[var] = true;
+						prog.rows.push_back({{{var, 1.0}}, m[i].back(), m[i].back(), std::format("pinned {}", d)});
+					}
+					solved.insert(d);
+					propagate();
+				}
+			}
+			for (size_t d = 0; d < vc.dummies.size(); d++) {
+				if (native.contains(d)) {
+					st.pin_native++;
+				} else if (solved.contains(d)) {
+					st.pin_solved++;
+				} else if (vc.dummies[d].land_track == UINT32_MAX) {
+					st.pin_box++;
+				} else {
+					st.pin_parallel++;
+				}
+			}
+		}
+		const PlanarProgramCheck check = CheckPlanarProgramOnPoints(prog, cv.points);
+		for (const std::string &u : check.undetermined) {
+			st.undetermined[CellFamilyOf(u)]++;
+		}
+		for (const std::string &b : check.broken) {
+			broken_families.insert(CellFamilyOf(b));
+			broken_tags.push_back(b);
+		}
+		for (const PlanarPointRow &row : PlanarNodeLeadRows(cv.v)) {
+			if (!PlanarPointRowHolds(row, cv.points)) broken_families.insert("lead");
+		}
+		const bool per_track = std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); });
+		if (!per_track) broken_families.insert("turn");
+		if (!NodeTurnsHold(f, cv)) broken_families.insert("node turn");
+	}
+	if (legal || g_cells_name == "197") {
+		if (!broken_families.empty()) {
+			if (legal) st.strict++;
+			{
+				std::string sig;
+				for (const std::string &fam : broken_families) sig += (sig.empty() ? "" : "+") + fam;
+				st.strict_signature[sig]++;
+			}
+			for (const std::string &fam : broken_families) st.strict_by_family[fam]++;
+			if (st.strict_first.size() < 5 || g_cells_name == "197") {
+				std::string text = std::format("{} polyline {}\n", g_cells_name, pkey);
+				text += std::format("    {} cell program broken rows (families):", broken_tags.size());
+				for (const std::string &fam : broken_families) text += " " + fam;
+				text += "\n";
+				for (size_t i = 0; i < broken_tags.size() && i < (g_cells_name == "197" ? 400 : 3); i++) {
+					if (g_cells_name == "197" && (broken_tags[i].starts_with("bound") || broken_tags[i].starts_with("integer"))) {
+						text += "    row " + broken_tags[i] + "\n";
+						continue;
+					}
+					const std::string &tag = broken_tags[i];
+					text += "    row " + tag + "\n";
+					std::istringstream ts(tag);
+					std::string family;
+					std::vector<size_t> n;
+					ts >> family;
+					for (size_t x; ts >> x;) n.push_back(x);
+					const size_t c = n.size() == 3 ? n[0] : 0, k = n.size() == 3 ? n[1] : 0, e = n.size() == 3 ? n[2] : 0, d = n.empty() ? 0 : n[0];
+					if (n.size() == 3 && (family == "clear" || family == "room" || family == "along")) {
+						if (c < cells.size() && k < cells[c].size() && e < cells[c].size()) {
+							const auto &cell = cells[c];
+							text += std::format("      cell {} ({} walls): vertex after wall {}: {}; next wall {}; target wall {}: {}\n", c, cell.size(), k, CellWallText(vc, cell[k]), CellWallText(vc, cell[(k + 1) % cell.size()]), e, CellWallText(vc, cell[e]));
+						}
+					} else if (n.size() == 1 && family == "land" && d < vc.dummies.size()) {
+						const PlanarShapeDummy &dm = vc.dummies[d];
+						const std::string land = dm.land_track == UINT32_MAX ? std::format("box {}", dm.land_piece) : dm.land_track == PLANAR_DUMMY_TRACK ? std::format("dummy {}", dm.land_piece) : std::format("{} p{}", vc.structure.map.tracks[dm.land_track].name, dm.land_piece);
+						text += std::format("      dummy {} from {} bend after p{}, heading {}, lands on {}\n", d, vc.structure.map.tracks[dm.track].name, dm.piece, dm.heading, land);
+					}
+				}
+				st.strict_first.push_back(text);
+			}
+		}
+	}
+	{
+		PlanarDrawOptions o2 = o;
+		o2.clearance = false;
+		o2.clear_rows = false;
+		const PlanarDrawResult b = CheckPlanarDrawable(plain, 5.0, o2);
+		bool base_accept = b.status == "built" || is_span_bend(b.status) ? !is_span_bend(b.status) : false;
+		if (base_accept) base_accept = CheckPlanarProgramOnPoints(b.program, cv.points).broken.empty();
+		if (base_accept) {
+			for (const PlanarPointRow &row : PlanarNodeLeadRows(cv.v)) base_accept = base_accept && PlanarPointRowHolds(row, cv.points);
+			base_accept = base_accept && NodeTurnsHold(f, cv) && std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); });
+		}
+		if (base_accept && legal) st.base_legal_accept++;
+		if (base_accept && !legal) {
+			st.keep_only++;
+			if (!broken_families.empty()) st.keep_only_refused++;
+		}
+	}
+	if (!legal && broken_families.empty()) {
+		st.loose++;
+		if (pairwise_accept) st.loose_pairwise_too++;
+		if (!on_grid) st.loose_off_grid++;
+		std::set<std::string> rules;
+		for (const PlanarDomainBreak &b : domain.breaks) rules.insert(b.rule);
+		for (const std::string &rule : rules) st.loose_by_rule[rule]++;
+	} else if (!legal) {
+		st.refuse_illegal++;
+		for (const std::string &fam : broken_families) st.refuse_illegal_by_family[fam]++;
+	}
+	st.ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+std::string CellsText(const std::string &name, const CellStats &st)
+{
+	std::ostringstream o;
+	const auto map_text = [](const std::map<std::string, size_t> &m) {
+		std::string s;
+		for (const auto &[k, n] : m) s += std::format(" [{}] {};", k, n);
+		return s.empty() ? std::string(" none") : s;
+	};
+	o << std::format("{}: drawings {} (legal {} of them off interface {}, illegal {}); {:.1f} s\n", name, st.drawings, st.legal, st.off_interface, st.illegal, st.ms / 1000);
+	o << std::format("  refinement refused {} (legal {}):{}\n", st.refused, st.refused_legal, map_text(st.refusals));
+	o << std::format("  refined {}: dummies {} (max {} per drawing), nonmonotone {} (drawings with one {}), cells {}, landing_fallbacks {}, H12 breaches {} drawings\n", st.refined, st.dummies, st.max_dummies, st.nonmonotone, st.drawings_nonmono, st.cells, st.fallbacks, st.unconvex);
+	o << std::format("  cell program built {} (legal {}, illegal {}), not built:{}\n", st.built, st.built_legal, st.built_illegal, map_text(st.unsupported));
+	o << std::format("  too strict: {} of {} built legal drawings; by family:{}\n", st.strict, st.built_legal, map_text(st.strict_by_family));
+	o << std::format("  dummies (built drawings): determined by the checker alone {}, solved here {}, left undetermined: landing on a box side {}, landing on a track or dummy {}\n", st.pin_native, st.pin_solved, st.pin_box, st.pin_parallel);
+	o << std::format("  too strict by set of broken families:{}\n", map_text(st.strict_signature));
+	o << std::format("  undetermined rows (drawings per family):{}\n", map_text(st.undetermined));
+	o << std::format("  counterfactual check: legal drawings the program without cells accepts {} of {}\n", st.base_legal_accept, st.built_legal);
+	o << std::format("  illegal drawings every other rule accepts (only a keep-apart rule can refuse them): {}; the cell program refuses {}\n", st.keep_only, st.keep_only_refused);
+	o << std::format("  illegal drawings refused by the cell program {} (families:{}); too loose {} (also accepted by the pairwise judge {}, off grid {}); by domain rule:{}\n", st.refuse_illegal, map_text(st.refuse_illegal_by_family), st.loose, st.loose_pairwise_too, st.loose_off_grid, map_text(st.loose_by_rule));
+	for (const std::string &t : st.strict_first) o << "  first too strict: " << t;
+	return o.str();
+}
+
 /** Judge a polyline's contracted writing against the domain on a fixture's configurations and write the report. */
 void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const RowsJudge &judge, int *base_verdict = nullptr, std::array<uint32_t, 8> *totals = nullptr)
 {
@@ -1750,6 +2106,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						nc.c = accept ? LOOSE : judge(f, *cv, false).accept ? LOOSE_OFF : BOTH_REJECT;
 					}
 					if (nc.c == BOTH_ACCEPT && g_sides_stats != nullptr) SidesAccumulate(*g_sides_stats, f, pkey, ro.keep.keep_apart, cv->points);
+					if (g_cells_stats != nullptr) CellsAccumulate(*g_cells_stats, f, pkey, *cv, d, nc.c == OFF_INTERFACE, accept, on_grid);
 					if (nc.c == STRICT) {
 						/* A too-strict polyline is on the grid by definition. */
 						for (const Points &p : points) REQUIRE(RasterPlanarDomainTrack(p).rule.empty());
@@ -4105,6 +4462,34 @@ TEST_CASE("planar sides: how many keep-apart sides the layout forces, and whethe
 	std::ofstream(path_env) << text;
 }
 
+TEST_CASE("planar cells: convex cells over contracted variants, judged by the suite (cells-1, D385 revisited)", "[.][cellsmeasure]")
+{
+	const char *path_env = std::getenv("PLANAR_CELLS_REPORT");
+	REQUIRE(path_env != nullptr);
+	std::string text;
+	const auto run = [&](const std::string &name, const X1Fixture &f, const std::vector<Config> &configs) {
+		CellStats st;
+		std::array<uint32_t, 8> totals{};
+		g_cells_stats = &st;
+		g_cells_name = name;
+		RunEncoding(f, nullptr, name, configs, "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
+		g_cells_stats = nullptr;
+		text += CellsText(name, st);
+		std::cout << CellsText(name, st) << std::flush;
+	};
+	{ const X1Fixture f; run("X1", f, X1Configs(f)); }
+	{ const X2Fixture f; RequireBaseLegal(f); run("X2", f, X2Configs(f)); }
+	{ const M1Fixture f; RequireBaseLegal(f); run("M1", f, M1Configs(f)); }
+	{ const K1Fixture f; RequireBaseLegal(f); run("K1", f, K1Configs(f)); }
+	{ const L1Fixture f; RequireBaseLegal(f); run("L1", f, L1Configs(f)); }
+	{ const Y1Fixture f; RequireBaseLegal(f); run("Y1", f, Y1Configs(f)); }
+	{ const P1Fixture f; RequireBaseLegal(f); run("P1", f, P1Configs(f)); }
+	{ const BridgeFixture f; RequireBaseLegal(f); run("BR1", f, BR1Configs(f)); }
+	{ const TT1Fixture f; RequireBaseLegal(f); run("TT1", f, StackConfigs(f)); }
+	{ const TS2Fixture f; RequireBaseLegal(f); run("TS2", f, StackConfigs(f)); }
+	std::ofstream(path_env) << text;
+}
+
 TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.][planardomain197]")
 {
 	const char *report_env = std::getenv("PLANAR_DOMAIN_REPORT_197");
@@ -4314,6 +4699,12 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 		SideStats st;
 		SidesAccumulate(st, f, "V's 197", ro.keep.keep_apart, cv->points);
 		std::ofstream(sides_env) << std::format("domain legal {} judge accepts {}\n", domain.legal, full.accept) << SidesText("197", st);
+	}
+	if (const char *cells_env = std::getenv("PLANAR_CELLS_197"); cells_env != nullptr) {
+		CellStats st;
+		g_cells_name = "197";
+		CellsAccumulate(st, f, "V's 197", *cv, domain, false, full.accept, true);
+		std::ofstream(cells_env) << std::format("domain legal {} judge accepts {}\n", domain.legal, full.accept) << CellsText("197", st);
 	}
 	struct Refusal {
 		size_t count = 0;
