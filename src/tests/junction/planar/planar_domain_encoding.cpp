@@ -2690,6 +2690,66 @@ TEST_CASE("planar domain: our keep-apart against the domain on P1", "[.][planard
 
 namespace {
 
+/** BR1: X1's topology with its one structure a bridge instead of a tunnel (domain-31). */
+struct BridgeFixture : DrawnFixture {
+	BridgeFixture() : DrawnFixture(
+		"topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N @ 3 5: C1, B1\nport E out E @ 2 4: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n",
+		"bridge B1 A1: B1\nstraight AC1: A1\nstraight BD1: B1\n", 2)
+	{
+	}
+
+	/** The header: Shape's headings, the base drawing, the base polyline's runs. */
+	std::string Header() const
+	{
+		std::ostringstream out;
+		out << "Shape's headings (the heading solve of ShapePlanarStructureVariant):\n" << shape_log << "base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): " << draw_log << "\n";
+		const std::vector<Points> base_points = PointsOf(base);
+		for (uint32_t t = 0; t < n; t++) {
+			out << "base " << Name(t) << ": start (" << base_points[t].front()[0] << "," << base_points[t].front()[1] << ") lengths";
+			for (uint32_t k = 0; k < heads.at(Name(t)).size(); k++) {
+				const auto it = base.find(Name(t));
+				const auto l = it == base.end() ? std::map<uint32_t, int>::const_iterator() : it->second.find(k);
+				out << " " << (it != base.end() && l != it->second.end() ? l->second : 0);
+			}
+			out << "\n";
+		}
+		return out.str();
+	}
+};
+
+} // namespace
+
+TEST_CASE("planar domain: BR1 loads, its structure is a bridge and its base is legal", "[junction][planar][planardomain]")
+{
+	const BridgeFixture f;
+	INFO(f.shape_log << f.draw_log);
+	REQUIRE(f.v.structure.structures.size() == 1);
+	CHECK(f.v.structure.structures[0].kinds == 1);
+	RequireBaseLegal(f);
+	std::vector<std::string> notes;
+	const PlanarDomainInput in = PlanarDomainInputOf(f.v, f.PointsOf(f.base), notes);
+	REQUIRE(in.structures.size() == 1);
+	CHECK_FALSE(in.structures[0].tunnel);
+	CHECK(in.structures[0].ends == 1);
+	int verdict = 1;
+	const Config none{"base", {}, {}};
+	RunEncoding(f, nullptr, "BR1", {none}, "", "span+lead+endnode+crosspiece+grid+portzero", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on BR1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_BR1");
+	REQUIRE(report_path != nullptr);
+	const BridgeFixture f;
+	RequireBaseLegal(f);
+	std::vector<Config> configs;
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	RunEncoding(f, report_path, "BR1", configs, f.Header());
+}
+
+namespace {
+
 /** The rows of a polyline's whole program (as the read-out builds it, strict rules off) that its contracted points break. */
 std::vector<std::string> BrokenRows(const X1Fixture &f, const Geometry &g, bool skip_port_rows = false)
 {

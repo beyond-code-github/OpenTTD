@@ -379,6 +379,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 
 	/* Step 2: parse every statement. */
 	std::vector<PlanarStructureRun> runs;
+	std::vector<uint8_t> run_kinds; ///< Per run: 1 bridge, 2 tunnel.
 	std::map<std::string, size_t> tunnel_ids; ///< Tunnel id to its run.
 	std::vector<std::pair<std::string, std::vector<std::string>>> groups; ///< Statement, tunnel ids.
 	std::vector<std::tuple<std::string, std::string, std::vector<std::string>>> copies; ///< Statement, copy line, tunnel ids.
@@ -393,7 +394,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 		const std::string word = statement.substr(0, space);
 		const std::string rest = space == std::string::npos ? std::string() : trim(statement.substr(space + 1));
 		const size_t colon = rest.find(':');
-		if (word == "tunnel") {
+		if (word == "tunnel" || word == "bridge") {
 			const size_t id_end = rest.find(' ');
 			if (colon == std::string::npos || id_end == std::string::npos || id_end > colon) {
 				*error = fmt::format("malformed statement: {}", statement);
@@ -402,7 +403,7 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 			const std::string id = rest.substr(0, id_end);
 			const std::string separator = trim(std::string_view(rest).substr(id_end, colon - id_end));
 			if (tunnel_ids.contains(id)) {
-				*error = fmt::format("tunnel id {} given twice: {}", id, statement);
+				*error = fmt::format("{} id {} given twice: {}", word, id, statement);
 				return {};
 			}
 			const uint32_t sep = PlanarLineByName(topology, separator);
@@ -419,13 +420,14 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 				}
 				const auto it = std::ranges::find_if(topology.crossings, [&](const PlanarCrossing &c) { return (c.a == sep && c.b == other) || (c.a == other && c.b == sep); });
 				if (it == topology.crossings.end()) {
-					*error = fmt::format("tunnel {}: {} does not cross {}", id, separator, crosser);
+					*error = fmt::format("{} {}: {} does not cross {}", word, id, separator, crosser);
 					return {};
 				}
 				run.crossings.push_back(static_cast<uint32_t>(it - topology.crossings.begin()));
 			}
 			tunnel_ids[id] = runs.size();
 			runs.push_back(std::move(run));
+			run_kinds.push_back(word == "bridge" ? 1 : 2);
 		} else if (word == "group") {
 			if (colon == std::string::npos) {
 				*error = fmt::format("malformed statement: {}", statement);
@@ -581,11 +583,12 @@ PlanarStructureVariant LoadPlanarStructureVariant(const PlanarTopology &topology
 		return v;
 	}
 	v.structures = PlanarBuildStructures(topology, runs, v.map, spec);
-	for (PlanarStructure &st : v.structures) {
-		st.kinds = 2;
+	for (size_t i = 0; i < v.structures.size(); i++) {
+		PlanarStructure &st = v.structures[i];
+		st.kinds = run_kinds[i];
 		st.limit = StructureLimit(spec, st);
 	}
-	if (v.structures.size() != runs.size()) report.push_back(fmt::format("gap: {} tunnels gave {} structures", runs.size(), v.structures.size()));
+	if (v.structures.size() != runs.size()) report.push_back(fmt::format("gap: {} structures gave {} structures", runs.size(), v.structures.size()));
 	v.sites = PlanarBuildStructureSites(topology, channels, sites, v.map);
 	for (uint32_t n = 0; n < topology.nodes.size(); n++) {
 		const PlanarNode &node = v.map.expanded.nodes[n];

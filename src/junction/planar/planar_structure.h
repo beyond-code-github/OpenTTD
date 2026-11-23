@@ -139,6 +139,7 @@ PlanarStructureResult BuildPlanarStructure(const PlanarTopology &topology, const
  * A Structure output written down (D389): load pinned decisions into one variant, through the same builders BuildPlanarStructure uses.
  * The text has one statement per line, `#` starts a comment:
  * - `tunnel T<n> <separator line>: <crosser line>, ...`: one structure of kind tunnel; its crossers in travel order along the separator.
+ * - `bridge B<n> <separator line>: <crosser line>, ...`: the same, of kind bridge; its id shares the tunnel ids' namespace.
  * - `group G<nn>: T<n>, ...`: parallel tunnels (information for Shape v2; parsed, ids checked, not stored).
  * - `copy <line> over T<n>, ...`: a copy of `<line>` over those tunnels.
  * - `straight <trunk line>: <leg line>` or `straight <trunk line>: none`: at the node whose trunk (a split's in line, a merge's out line) is that line, the straight leg, or none (a fork).
