@@ -25,6 +25,7 @@
 #include <climits>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -78,6 +79,7 @@ struct X1Fixture {
 	PlanarShapeVariant v;
 	uint32_t n = 0;
 	std::map<std::string, uint32_t> idx;
+	std::vector<std::string> names; ///< Per track, its key: the line's name, made unique by "#<index>" for a copy or part.
 	std::map<std::string, std::vector<int>> heads;
 	std::map<std::string, Point> starts;
 	Geometry base;
@@ -107,7 +109,13 @@ struct X1Fixture {
 	explicit X1Fixture(PlanarShapeVariant variant) : v(std::move(variant))
 	{
 		n = static_cast<uint32_t>(v.structure.map.expanded.lines.size());
-		for (uint32_t t = 0; t < n; t++) idx[v.structure.map.expanded.lines[t].name] = t;
+		for (uint32_t t = 0; t < n; t++) {
+			/* A copy or a part shares its line's name: later ones get "#<track index>" so every track has its own key. */
+			std::string name = v.structure.map.expanded.lines[t].name;
+			if (idx.count(name) != 0) name += "#" + std::format("{}", t);
+			names.push_back(name);
+			idx[name] = t;
+		}
 		starts = {{"AC1", {0, 5}}, {"A1", {4, 5}}, {"C1", {4, 5}}, {"BD1", {11, 12}}, {"B1", {11, 10}}, {"D1", {11, 10}}};
 		options.clearance = options.clear_rows = options.pairwise = options.pairwise_all_faces = true;
 		options.strict_span = options.strict_zero = options.crossing_flanks = true;
@@ -172,7 +180,7 @@ struct X1Fixture {
 		return CheckPlanarDrawable(v, 5.0, o);
 	}
 
-	const std::string &Name(uint32_t t) const { return v.structure.map.expanded.lines[t].name; }
+	const std::string &Name(uint32_t t) const { return names[t]; }
 };
 
 /** X2's loaded variant, the B1 shape text that loaded, and the log of what was refused. */
@@ -370,6 +378,114 @@ struct K1Fixture : X1Fixture {
 	}
 };
 
+/** A fixture on Shape's own heading solve (D428 batch 2a): the variant is `ShapePlanarStructureVariant`'s, the starts and base geometry are one drawing by the program on the grid (the rule set span+lead+endnode+crosspiece+grid plus the corridor family, tidy, integer). */
+struct DrawnFixture : X1Fixture {
+	std::string shape_log; ///< Shape's headings per track, one line each.
+	std::string draw_log; ///< The base drawing's status and size.
+	PlanarDrawResult drawing; ///< The base drawing.
+	std::string draw_why; ///< Why the base drawing is not legal, empty when it is.
+
+	DrawnFixture(const std::string &topo, const std::string &structure) : DrawnFixture(Shaped(topo, structure)) {}
+
+private:
+	static PlanarShapeVariant Shaped(const std::string &topo, const std::string &structure)
+	{
+		std::string error;
+		const PlanarTopology t = ParsePlanarTopology(topo, &error);
+		INFO(error);
+		REQUIRE(error.empty());
+		const JunctionSpec spec = MakeTestJunctionSpec();
+		std::vector<std::string> report;
+		const PlanarStructureVariant s = LoadPlanarStructureVariant(t, structure, spec, report, &error);
+		INFO(error);
+		REQUIRE(error.empty());
+		PlanarShapeVariant v;
+		std::string why;
+		const bool shaped = ShapePlanarStructureVariant(s, v, why);
+		INFO("Shape refused: " << why);
+		REQUIRE(shaped);
+		return v;
+	}
+
+	explicit DrawnFixture(PlanarShapeVariant variant) : X1Fixture(std::move(variant))
+	{
+		options.corridor = true;
+		options.end_node = options.cross_piece = options.grid = true;
+		options.strict_zero = options.crossing_flanks = false;
+		options.node_lead = true;
+		options.tidy = true;
+		options.elastic = false;
+		std::map<std::string, std::vector<int>> h;
+		std::ostringstream shape;
+		for (uint32_t t = 0; t < n; t++) {
+			h[Name(t)] = v.tracks[t].pieces;
+			shape << "  " << Name(t) << ":";
+			for (const int x : v.tracks[t].pieces) shape << " " << x;
+			shape << "; flex middles:";
+			for (const uint32_t m : v.tracks[t].flex) shape << " " << m;
+			shape << "\n";
+		}
+		shape_log = shape.str();
+		/* The base is drawn on the flex-stripped variant (every flex pair erased with its trailing flank, as the pipeline's final_contract does with nothing kept), so every piece has a least length and the grid seeds every axis run. */
+		PlanarShapeVariant stripped = v;
+		std::vector<std::vector<uint32_t>> kept_of(n); ///< Per track, the shaped index of each stripped piece's first piece.
+		std::vector<std::vector<uint32_t>> stripped_of(n); ///< Per track, the stripped piece each shaped piece belongs to.
+		for (uint32_t t = 0; t < n; t++) {
+			PlanarShapeTrack &track = stripped.tracks[t];
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			std::vector<bool> erased(track.pieces.size(), false);
+			for (const uint32_t m : middles) erased[m] = erased[m + 1] = true;
+			for (uint32_t i = 0; i < erased.size(); i++) {
+				if (!erased[i]) kept_of[t].push_back(i);
+				stripped_of[t].push_back(static_cast<uint32_t>(kept_of[t].size()) - 1);
+			}
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+			track.steps.clear();
+		}
+		std::string refine_why;
+		REQUIRE(RefinePlanarShapeCells(stripped, refine_why));
+		drawing = CheckPlanarDrawable(stripped, 15.0, options);
+		std::ostringstream log;
+		log << "status " << drawing.status << ", feasible " << drawing.feasible << ", rows " << drawing.rows << ", columns " << drawing.columns << ", " << drawing.ms << " ms";
+		if (drawing.status != "Optimal") {
+			log << "; conflicts:";
+			for (const std::string &c : drawing.conflict) log << " [" << c << "]";
+		}
+		draw_log = log.str();
+		INFO("base drawing (flex-stripped variant): " << draw_log);
+		INFO("Shape's headings:\n" << shape_log);
+		REQUIRE(drawing.status == "Optimal");
+		REQUIRE(drawing.points.size() == n);
+		/* The base onto the shaped variant: a stripped piece's length goes to its first piece in the shaped list, or to the piece its crossing sits on; the inserts stay 0. */
+		Geometry g;
+		for (uint32_t t = 0; t < n; t++) {
+			const auto &p = drawing.points[t];
+			REQUIRE(p.size() == kept_of[t].size() + 1);
+			starts[Name(t)] = p[0];
+			std::map<uint32_t, uint32_t> at_event;
+			for (const uint32_t e : v.tracks[t].event_piece) at_event.emplace(stripped_of[t][e], e);
+			for (size_t k = 0; k + 1 < p.size(); k++) {
+				const int len = std::max(std::abs(p[k + 1][0] - p[k][0]), std::abs(p[k + 1][1] - p[k][1]));
+				if (len == 0) continue;
+				const auto ev = at_event.find(static_cast<uint32_t>(k));
+				g[Name(t)][ev != at_event.end() ? ev->second : kept_of[t][k]] = len;
+			}
+		}
+		SetUp(h, g);
+		/* The drawing's end points are the base polyline's. */
+		const std::vector<Points> base = PointsOf(g);
+		for (uint32_t t = 0; t < n; t++) REQUIRE(base[t].back() == drawing.points[t].back());
+	}
+};
+
 /** The least over a candidate's rows of s.(q - p) - spacing on the points. */
 int WorstSlack(const PlanarKeepApartPair::Candidate &c, const std::vector<Points> &points)
 {
@@ -489,6 +605,8 @@ struct Tally {
 	std::vector<Example> other; ///< The first other shape polylines.
 };
 
+uint32_t g_corridor_rows_seen = 0; ///< The corridor rows over the on-grid contracted variants judged in the last report.
+uint32_t g_corridor_rows_base = 0; ///< The corridor rows in the base polyline's read-out.
 uint32_t g_lead_rows_seen = 0; ///< The node lead rows over the contracted variants judged in the last report.
 std::map<std::string, uint32_t> g_lead_by_family; ///< The same, per configuration family (the name up to its first space).
 
@@ -696,6 +814,7 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 struct Config {
 	std::string name;
 	std::vector<std::tuple<std::string, uint32_t, std::vector<int>>> axes;
+	std::vector<std::pair<std::string, uint32_t>> absorbers = {}; ///< Absorbing pieces (track, piece): the piece takes the one length that puts the track's end where the base has it; a geometry with no such length (it would move that end) is skipped.
 };
 
 /** The read-outs on one contracted variant. */
@@ -780,6 +899,10 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			&& std::ranges::all_of(ro.lead, [&](const PlanarPointRow &r) { return PlanarPointRowHolds(r, cv.points); })
 			&& CheckPlanarProgramOnPoints(ro.program.program, cv.points).broken.empty();
 	};
+	/** The number of the program read-out's corridor rows. */
+	auto corridor_rows = [](const Readouts &ro) {
+		return static_cast<uint32_t>(std::ranges::count_if(ro.program.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("corridor"); }));
+	};
 	if (base_verdict != nullptr) {
 		/* Only the base polyline: 0 the rows accept it, 1 reject, 2 other shape. */
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
@@ -791,12 +914,15 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		return;
 	}
 	g_lead_rows_seen = 0;
+	g_corridor_rows_seen = 0;
+	g_corridor_rows_base = 0;
 	g_turn_moved = 0;
 	g_turn_rejected = 0;
 	g_lead_by_family.clear();
 	{
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
-		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(cv->v)) ? "accept" : "reject"));
+		if (cv) g_corridor_rows_base = corridor_rows(readouts(cv->v));
+		WARN("base polyline: " << (!cv ? "other shape" : accepts(*cv, readouts(cv->v)) ? "accept" : "reject") << ", corridor rows in its read-out: " << g_corridor_rows_base);
 	}
 
 	const auto Num = [](size_t n) { std::ostringstream o; o << n; return o.str(); };
@@ -826,6 +952,39 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	};
 	std::map<std::string, EnumCount> enum_counts;
 
+	const std::vector<Points> base_points = f.PointsOf(f.base);
+	/** The length of an absorbing piece that puts its track's end at the base's, given the end with that piece at 0; none when no length does. */
+	auto absorb_length = [&](const std::string &name, uint32_t k, const Point &end_without) -> std::optional<int> {
+		const Point &target = base_points[f.idx.at(name)].back();
+		const int hh = ((f.heads.at(name)[k] % 8) + 8) % 8;
+		const int len = STEPS[hh][0] != 0 ? (target[0] - end_without[0]) * STEPS[hh][0] : (target[1] - end_without[1]) * STEPS[hh][1];
+		if (len < 0 || end_without[0] + len * STEPS[hh][0] != target[0] || end_without[1] + len * STEPS[hh][1] != target[1]) return std::nullopt;
+		return len;
+	};
+	/** Set a geometry's absorbing pieces from its other pieces; false when one has no length. */
+	auto absorb = [&](const Config &cfg, Geometry &g) {
+		for (const auto &[name, k] : cfg.absorbers) {
+			const std::vector<int> &h = f.heads.at(name);
+			Point cur = f.starts.at(name);
+			const auto it = g.find(name);
+			for (uint32_t j = 0; j < h.size(); j++) {
+				const int hh = ((h[j] % 8) + 8) % 8;
+				int len = 0;
+				if (it != g.end() && j != k) {
+					const auto l = it->second.find(j);
+					if (l != it->second.end()) len = l->second;
+				}
+				cur[0] += len * STEPS[hh][0];
+				cur[1] += len * STEPS[hh][1];
+			}
+			const std::optional<int> len = absorb_length(name, k, cur);
+			if (!len) return false;
+			g[name][k] = *len;
+		}
+		return true;
+	};
+	std::map<std::string, uint32_t> skipped; ///< Per configuration, the blind geometries skipped because an absorbing piece had no length.
+
 	/** Judge one geometry into the tallies (the class is cached per polyline). */
 	auto judge = [&](const Config &cfg, Tally &tally, const Geometry &g, const std::string &varied, const std::vector<Points> &points, bool on_grid) {
 		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE } c;
@@ -850,6 +1009,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					if (on_grid) {
 						g_lead_rows_seen += static_cast<uint32_t>(ro.lead.size());
 						g_lead_by_family[FamilyOf(cfg.name)] += static_cast<uint32_t>(ro.lead.size());
+						g_corridor_rows_seen += corridor_rows(ro);
 					}
 					const bool accept = accepts(*cv, ro);
 					if (d.legal) {
@@ -933,7 +1093,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	};
 
 	/** The on-grid walk of one track (the by-construction mode): from the start, each piece offers its candidate lengths (the axis values when varied, else the base length) and keeps those that end on an edge midpoint (x + y odd) and, for an axis piece with length, on its centre line (east-west on odd y, north-south on odd x). Returns the chosen lengths of the varied pieces. */
-	auto walk_track = [&](const std::string &name, const std::map<uint32_t, std::vector<int>> &varied) {
+	auto walk_track = [&](const Config &cfg, const std::string &name, const std::map<uint32_t, std::vector<int>> &varied) {
+		std::set<uint32_t> absorbing;
+		for (const auto &[track, piece] : cfg.absorbers) {
+			if (track == name) absorbing.insert(piece);
+		}
 		std::vector<std::map<uint32_t, int>> out;
 		const std::vector<int> &h = f.heads.at(name);
 		const auto base_it = f.base.find(name);
@@ -941,6 +1105,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		Points path;
 		auto rec = [&](auto &&self, uint32_t k, Point cur) -> void {
 			if (k == h.size()) {
+				if (!absorbing.empty() && path.back() != base_points[f.idx.at(name)].back()) return;
 				/* The raster's turn rule: no turn over one eighth, no two consecutive pieces on one tile. */
 				if (RasterPlanarDomainTrack(path).rule.empty()) out.push_back(chosen);
 				return;
@@ -949,6 +1114,12 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 			const auto v = varied.find(k);
 			if (v != varied.end()) {
 				cands = v->second;
+			} else if (absorbing.count(k) != 0) {
+				/* The absorbing piece offers every length up to the base's plus 16; the end filter below keeps the one that puts the track's end at the base's. */
+				const auto bt = f.base.find(name);
+				const auto bl = bt == f.base.end() ? std::map<uint32_t, int>::const_iterator() : bt->second.find(k);
+				const int top = (bt != f.base.end() && bl != bt->second.end() ? bl->second : 0) + 16;
+				for (int c = 0; c <= top; c++) cands.push_back(c);
 			} else {
 				int len = 0;
 				if (base_it != f.base.end()) {
@@ -967,12 +1138,12 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						if ((across % 2 + 2) % 2 != 1) continue;
 					}
 				}
-				if (v != varied.end()) chosen[k] = len;
+				if (v != varied.end() || absorbing.count(k) != 0) chosen[k] = len;
 				path.push_back(next);
 				self(self, k + 1, next);
 				path.pop_back();
 			}
-			if (v != varied.end()) chosen.erase(k);
+			if (v != varied.end() || absorbing.count(k) != 0) chosen.erase(k);
 		};
 		path.push_back(f.starts.at(name));
 		rec(rec, 0, f.starts.at(name));
@@ -993,14 +1164,18 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 				g[name][piece] = vals[pos[a]];
 				varied << (a == 0 ? "" : " ") << name << "." << piece << "=" << vals[pos[a]];
 			}
-			const std::vector<Points> points = f.PointsOf(g);
-			bool on_grid = true;
-			for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
-			ec.blind++;
-			if (on_grid) {
-				ec.blind_on++;
+			if (!absorb(cfg, g)) {
+				skipped[cfg.name]++;
 			} else {
-				judge(cfg, tally, g, varied.str(), points, false);
+				const std::vector<Points> points = f.PointsOf(g);
+				bool on_grid = true;
+				for (const Points &p : points) on_grid = on_grid && RasterPlanarDomainTrack(p).rule.empty();
+				ec.blind++;
+				if (on_grid) {
+					ec.blind_on++;
+				} else {
+					judge(cfg, tally, g, varied.str(), points, false);
+				}
 			}
 			size_t a = 0;
 			while (a < cfg.axes.size()) {
@@ -1019,7 +1194,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		std::vector<std::vector<std::map<uint32_t, int>>> walks;
 		bool any_empty = false;
 		for (const std::string &name : names) {
-			walks.push_back(walk_track(name, varied_of[name]));
+			walks.push_back(walk_track(cfg, name, varied_of[name]));
 			any_empty = any_empty || walks.back().empty();
 		}
 		if (!any_empty) {
@@ -1057,6 +1232,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	REQUIRE(out.good());
 	out << "Encoding report on " << title << ": our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)\n" << header;
 	out << "node lead rows over the judged contracted variants: " << g_lead_rows_seen << "\n";
+	out << "corridor rows over the judged on-grid contracted variants: " << g_corridor_rows_seen << "; in the base polyline's read-out: " << g_corridor_rows_base << "\n";
 	out << "Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: " << g_turn_moved << ", with none within one eighth (rows reject): " << g_turn_rejected << "\n";
 	for (const Config &cfg : configs) g_lead_by_family.try_emplace(FamilyOf(cfg.name), 0);
 	for (const auto &[family, rows] : g_lead_by_family) out << "node lead rows, configuration " << family << ": " << rows << "\n";
@@ -1078,7 +1254,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	for (const Config &cfg : configs) {
 		const EnumCount &ec = enum_counts[cfg.name];
 		out << "wall " << cfg.name << ": " << cfg_wall[cfg.name] << " s\n";
-		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
+		out << "enumeration " << cfg.name << ": blind " << ec.blind << " geometries (" << ec.blind_on << " on the grid, " << ec.blind - ec.blind_on << " off; " << skipped[cfg.name] << " more skipped, an absorbing piece had no length); by construction " << ec.built << " geometries (" << ec.built_off << " of them the raster refuses and are not judged here: its turn rules)\n";
 		write(cfg.name, per[cfg.name]);
 	}
 	write("total", total);
@@ -1745,4 +1921,80 @@ TEST_CASE("planar domain: our keep-apart against the domain on K1", "[.][planard
 	AddAxes(c, f, "C1", f.holders.at("C1"), {{1, 2, 3}, {}}, 0, 2);
 	REQUIRE(f.options.node_gaps);
 	RunEncoding(f, report_path, "K1", {c}, "node_gaps: on (D424)\n" + FixtureHeader(f, f.holders));
+}
+
+namespace {
+
+/** L1: two lanes from W, the left lanes turning north across the right lanes' straight run (domain-19). */
+struct L1Fixture : DrawnFixture {
+	L1Fixture() : DrawnFixture(
+		"topology L1\nport W in E: AB1, AB2\nport N out N: A1, A2\nport E out E: B1, B2\nnode AB1 -> A1, B1\nnode AB2 -> A2, B2\ncross B1: A2<\ncross A2: B1>\n",
+		"tunnel T1 B1: A2\nstraight AB1: B1\nstraight AB2: B2\n")
+	{
+		REQUIRE(n == 6);
+		REQUIRE(heads.at("A1") == std::vector<int>({1, 0, 1, 2, 1, 0, -1, 0, 1, 0}));
+		REQUIRE(heads.at("A2") == std::vector<int>({1, 0, 1, 2, 1, 0, -1, 0, 1, 0, -1, 0, 1, 0}));
+		REQUIRE(v.tracks[idx.at("A2")].event_piece.size() == 1);
+	}
+
+	/** The header: Shape's headings, the base drawing, the base polyline's runs. */
+	std::string Header() const
+	{
+		std::ostringstream out;
+		out << "Shape's headings (the heading solve of ShapePlanarStructureVariant):\n" << shape_log << "base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): " << draw_log << "\n";
+		const std::vector<Points> base_points = PointsOf(base);
+		for (uint32_t t = 0; t < n; t++) {
+			out << "base " << Name(t) << ": start (" << base_points[t].front()[0] << "," << base_points[t].front()[1] << ") lengths";
+			for (uint32_t k = 0; k < heads.at(Name(t)).size(); k++) {
+				const auto it = base.find(Name(t));
+				const auto l = it == base.end() ? std::map<uint32_t, int>::const_iterator() : it->second.find(k);
+				out << " " << (it != base.end() && l != it->second.end() ? l->second : 0);
+			}
+			out << "\n";
+		}
+		return out.str();
+	}
+};
+
+} // namespace
+
+TEST_CASE("planar domain: L1 loads and its base is legal", "[junction][planar][planardomain]")
+{
+	const L1Fixture f;
+	INFO(f.shape_log << f.draw_log);
+	RequireBaseLegal(f);
+	int verdict = 1;
+	const Config none{"base", {}, {}};
+	RunEncoding(f, nullptr, "L1", {none}, "", "span+lead+endnode+crosspiece+grid", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_L1");
+	REQUIRE(report_path != nullptr);
+	const L1Fixture f;
+	RequireBaseLegal(f);
+	/* An insert takes {0, 1, 2}, an axis heading's {0, 2}. */
+	const auto insert_values = [](int heading) { return (((heading % 8) + 8) % 8) % 2 == 0 ? std::vector<int>{0, 2} : std::vector<int>{0, 1, 2}; };
+	/* L1a: every flex insert of A1 and A2; the piece holding the last run's base length (the run into the N port) absorbs, so the port end stays where the base has it. */
+	Config a{"L1a", {}, {}};
+	for (const std::string name : {"A1", "A2"}) {
+		const uint32_t t = f.idx.at(name);
+		for (const uint32_t m : f.v.tracks[t].flex) a.axes.emplace_back(name, m, insert_values(f.heads.at(name)[m]));
+		/* The last piece holding a base length (the N run's: Shape's flank pieces are 0 in the base). */
+		uint32_t holder = 0;
+		for (const auto &[k, len] : f.base.at(name)) holder = std::max(holder, k);
+		a.absorbers.emplace_back(name, holder);
+	}
+	/* L1b: A2's pieces within two of its crossing piece in {0..4}, an axis heading's even; B1 at base. */
+	Config b{"L1b", {}, {}};
+	{
+		const std::vector<int> &h = f.heads.at("A2");
+		const uint32_t at = f.v.tracks[f.idx.at("A2")].event_piece[0];
+		for (uint32_t k = at >= 2 ? at - 2 : 0; k <= at + 2 && k < h.size(); k++) {
+			b.axes.emplace_back("A2", k, (((h[k] % 8) + 8) % 8) % 2 == 0 ? std::vector<int>{0, 2, 4} : std::vector<int>{0, 1, 2, 3, 4});
+		}
+	}
+	RunEncoding(f, report_path, "L1", {a, b}, f.Header());
 }
