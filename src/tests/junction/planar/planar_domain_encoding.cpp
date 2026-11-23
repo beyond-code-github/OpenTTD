@@ -3676,6 +3676,31 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 	std::map<std::string, size_t> domain_by_rule;
 	for (const PlanarDomainBreak &b : domain.breaks) domain_by_rule[b.rule]++;
 	for (const auto &[rule, count] : domain_by_rule) out << "  domain rule " << rule << ": " << count << "\n";
+	if (const char *dump_env = std::getenv("PLANAR_DOMAIN_DUMP_197"); dump_env != nullptr) {
+		/* Diagnostic dump (domain-39): our rasterised tiles and every break, as JSON (shifted frame; the box low corner is reported). */
+		std::ostringstream js;
+		js << "{\"low\":[" << low[0] << "," << low[1] << "],\"pieces\":[";
+		bool first = true;
+		for (size_t t = 0; t < points.size(); t++) {
+			const PlanarDomainRaster r = RasterPlanarDomainTrack(points[t]);
+			for (size_t k = 0; k < r.pieces.size(); k++) {
+				const PlanarDomainPiece &p = r.pieces[k];
+				js << (first ? "" : ",") << "{\"track\":\"" << f.Name(static_cast<uint32_t>(t)) << "\",\"k\":" << k << ",\"x\":" << p.tile.x << ",\"y\":" << p.tile.y << ",\"piece\":" << static_cast<int>(p.track) << "}";
+				first = false;
+			}
+		}
+		js << "],\"breaks\":[";
+		for (size_t i = 0; i < domain.breaks.size(); i++) {
+			const PlanarDomainBreak &b = domain.breaks[i];
+			js << (i == 0 ? "" : ",") << "{\"rule\":\"" << b.rule << "\",\"x\":" << b.tile.x << ",\"y\":" << b.tile.y << ",\"tracks\":[";
+			for (size_t j = 0; j < b.tracks.size(); j++) js << (j == 0 ? "" : ",") << "\"" << f.Name(b.tracks[j]) << "\"";
+			std::string why = b.why;
+			for (char &c : why) if (c == '"' || c == '\\') c = '\'';
+			js << "],\"why\":\"" << why << "\"}";
+		}
+		js << "]}\n";
+		std::ofstream(dump_env) << js.str();
+	}
 	for (size_t i = 0; i < domain.breaks.size() && i < 20; i++) {
 		const PlanarDomainBreak &b = domain.breaks[i];
 		out << "  break " << b.rule << " tile (" << b.tile.x << "," << b.tile.y << ") tracks";
