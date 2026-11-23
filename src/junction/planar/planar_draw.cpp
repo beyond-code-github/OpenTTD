@@ -2039,6 +2039,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						}
 						continue;
 					}
+					/* D444 trial: with only_pairs_on, a pair outside only_pairs is listed (candidates read out) but gets no binaries and no rows. */
+					const bool write_rows = !options.only_pairs_on || std::ranges::find(options.only_pairs, fmt::format("sep {} {} {}", f.face, i, j)) != options.only_pairs.end();
 					Terms bs;
 					for (size_t axis_index = 0; axis_index < axes.size(); axis_index++) {
 						const Axis &axis = axes[axis_index];
@@ -2046,10 +2048,12 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							if (options.inward_sides && !((axis_index == 0 && side == 0) || (w[i].heading % 4 != w[j].heading % 4 && axis_index == 1 && side == 1))) continue;
 							const auto &from = side == 0 ? pi : pj;
 							const auto &to = side == 0 ? pj : pi;
-							const uint32_t b = var(0, 1, 0, "other");
+							const uint32_t b = write_rows ? var(0, 1, 0, "other") : 0;
 							if (dump_pair != nullptr) dump_pair->candidates[axis_index * 2 + side].binary = b;
-							result.binaries++;
-							bs.emplace_back(b, 1);
+							if (write_rows) {
+								result.binaries++;
+								bs.emplace_back(b, 1);
+							}
 							PlanarKeepApartPair::Candidate *cand = ka != nullptr ? &ka->candidates.emplace_back(PlanarKeepApartPair::Candidate{axis.s, sp(axis), {}}) : nullptr;
 							const size_t from_wall = side == 0 ? i : j, to_wall = side == 0 ? j : i;
 							for (uint32_t e = 0; e < 2; e++) {
@@ -2062,6 +2066,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 										row_end(from_wall, e, r.p, r.p_cross);
 										row_end(to_wall, e2, r.q, r.q_cross);
 									}
+									if (!write_rows) continue;
 									Terms t{{b, -M}};
 									for (int d = 0; d < 2; d++) {
 										t.emplace_back(q[d], axis.s[d]);
@@ -2072,7 +2077,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							}
 						}
 					}
-					row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
+					if (write_rows) row(std::move(bs), 1, 1, fmt::format("sepdir {} {} {}", f.face, i, j));
 				}
 			}
 		}
