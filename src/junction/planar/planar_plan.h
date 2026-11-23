@@ -11,6 +11,7 @@
 #define PLANAR_PLAN_H
 
 #include "planar_components.h"
+#include "planar_hub.h"
 #include "planar_layout.h"
 #include "planar_topology.h"
 #include "../junction_layout.h"
@@ -58,6 +59,9 @@ PlanarRender RenderPlanarGeometry(const PlanarTopology &topology, const PlanarGe
 
 /** Render a component layout's route programs (DESIGN-components §6): each through RasterizeJunctionRoute (turn +1 is the rasteriser's L, a deck B<middle>), tagged edge = its path line, copy = its copy; the signal routes as the probe hook builds them; node and port tiles from the programs. */
 PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const PlanarComponentLayout &layout);
+
+/** Render a drawn hub (D452, SPEC-slots-lengths §4.1): one JunctionTrackRoute per route path, each through RasterizeJunctionRoute on its move string and cross-checked tile by tile against the domain rasters of its tracks (tag edge = track index), with the signal network, node and port tiles; rows are not rendered; a tunnel is refused (no levels). */
+PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub);
 
 /** A placed plan. */
 struct PlanarPlan {

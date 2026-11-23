@@ -11,6 +11,8 @@ add_files(
     planar_draw.h
     planar_gaps.cpp
     planar_gaps.h
+    planar_hub.cpp
+    planar_hub.h
     planar_layout.cpp
     planar_layout.h
     planar_model.cpp
