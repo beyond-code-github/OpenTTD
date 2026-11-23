@@ -2663,6 +2663,78 @@ TEST_CASE("planar domain: BR1 is exact under the default rule set", "[junction][
 
 namespace {
 
+/** TT1 (domain-43): a configuration, by topology and structure text. */
+struct StackFixture : DrawnFixture {
+	StackFixture(const std::string &topo, const std::string &structure) : DrawnFixture(topo, structure, 2) {}
+
+	/** The header: Shape's headings, the base drawing, the base polyline's runs. */
+	std::string Header() const
+	{
+		std::ostringstream out;
+		out << "Shape's headings (the heading solve of ShapePlanarStructureVariant):\n" << shape_log << "base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): " << draw_log << "\n";
+		const std::vector<Points> base_points = PointsOf(base);
+		for (uint32_t t = 0; t < n; t++) {
+			out << "base " << Name(t) << ": start (" << base_points[t].front()[0] << "," << base_points[t].front()[1] << ") lengths";
+			for (uint32_t k = 0; k < heads.at(Name(t)).size(); k++) {
+				const auto it = base.find(Name(t));
+				const auto l = it == base.end() ? std::map<uint32_t, int>::const_iterator() : it->second.find(k);
+				out << " " << (it != base.end() && l != it->second.end() ? l->second : 0);
+			}
+			out << "\n";
+		}
+		return out.str();
+	}
+};
+
+/** TT1: X1's topology, A1 and B1 each the other's tunnel separator (D390 (2)). */
+struct TT1Fixture : StackFixture {
+	TT1Fixture() : StackFixture("topology X1\nport W in E: AC1\nport S in N: BD1\nport N out N @ 3 5: C1, B1\nport E out E @ 2 4: A1, D1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\ncross A1: B1<\ncross B1: A1>\n", "tunnel T1 A1: B1\ntunnel T2 B1: A1\nstraight AC1: A1\nstraight BD1: B1\n") {}
+};
+
+std::vector<Config> StackConfigs(const StackFixture &f)
+{
+	std::vector<Config> configs;
+	for (const Config &c : NeighbourhoodConfigs(f, 3)) configs.push_back(c);
+	return configs;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: TT1 loads, two tunnels cross and its base is legal", "[junction][planar][planardomain]")
+{
+	const TT1Fixture f;
+	INFO(f.shape_log << f.draw_log);
+	REQUIRE(f.v.structure.structures.size() == 2);
+	RequireBaseLegal(f);
+	std::vector<std::string> notes;
+	const PlanarDomainInput in = PlanarDomainInputOf(f.v, f.PointsOf(f.base), notes);
+	REQUIRE(in.structures.size() == 2);
+	CHECK(in.structures[0].tunnel);
+	CHECK(in.structures[1].tunnel);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on TT1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_TT1");
+	REQUIRE(report_path != nullptr);
+	const TT1Fixture f;
+	RequireBaseLegal(f);
+	RunEncoding(f, report_path, "TT1", StackConfigs(f), f.Header(), DrawingProgramJudge(""));
+}
+
+TEST_CASE("planar domain: TT1 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const TT1Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 8> totals{};
+	RunEncoding(f, nullptr, "TT1", StackConfigs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
+	INFO("TT1: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
+}
+
+namespace {
+
 /** REQUIRE that no port rule refuses a fixture's base polyline. */
 void RequireBasePortRows(const char *name, const X1Fixture &f)
 {
