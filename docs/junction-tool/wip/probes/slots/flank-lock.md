@@ -21,3 +21,9 @@ Reading: (b) has no flank rows in its conflict: those five S-bends are required 
 - STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Error 15075 ms, flank rows written 90
 
 n1 = D1,D2,A2,B1,F2: Infeasible 133 ms, empty conflict (proved by branching): no S-bend choice on those five tracks fits with the others as chosen. n3 = n1 + CD1,CD2 (the trunks): Error 15 s. n2 = all 13 tracks of the lock conflict: Error 15 s. The neighbourhood does not stay small: a fix needs S-bend changes on several further tracks, and the search is hard from 7 free tracks on.
+
+## CP-SAT existence check (2026-11-24, tools/junction/planar_cpsat.py, OR-Tools 9.15, 4 workers; export with grid off, tidy off, every variable integer)
+- control, T2 stage A without flank rows (866 variables, 1415 rows): OPTIMAL (feasible) 2.10 s (HiGHS 0.6 s).
+- T2 stage A with the 159 flank rows (1574 rows): OPTIMAL (feasible) 28.53 s (HiGHS: no incumbent in 15 s).
+
+Reading: a turn-legal S-bend choice EXISTS for T2 (under rows that are, if anything, slightly strict). The trouble is search, not an upstream Shape gap. Grid parity not included (grid off).
