@@ -1,24 +1,24 @@
-# BRIEF slots-1 (measurement): T2 straight from Shape through today's program (D441)
+# BRIEF slots-1 (measurement): two-stage Slots from Shape's variant (D441, D442)
 
 > You execute this brief and nothing else. Make exactly the changes listed. Do not add any type, member, file, abstraction or mechanism that the brief does not name, and do not widen or narrow its scope. If something is not covered, or you would have to choose between approaches, stop at a clean state and report the question. A workaround that avoids a stop condition is a breach, not a stop. Keep your context small: send command output to files and report only what failed.
 
-Budget: 60 minutes wall; each solve capped at 15 s; no rerun loops. Measurement only: no production change. A hidden test may be added (tag `[.][slotsmeasure]`) and committed with the notes.
+Budget: 75 minutes wall; each solve capped at 15 s; no rerun loops. Measurement only: a hidden test `[.][slotsmeasure]` and a notes file, committed. No production change.
 
 ## 1. State and why
 - Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-e1`, head `<HEAD>`. Commit there; do not merge.
-- D441: Slots v2 starts as `CheckPlanarDrawable` over contracted lines (D432) with the suite's rules, judged by `RowsJudge` (D436). First milestone: T2 solved from Shape's own variant, no seed, no pins. Open question: contracted rows need to know which S-bends exist (D432 took them from a previous drawing via `final_contract`); with no seed, do they come from Shape (its flex/steps) or must Slots choose them?
-- Read first: DECISIONS D395, D402, D427, D432, D436, D441; planar_draw.h `PlanarDrawOptions` (rules on by default since D435), `final_contract`; planar_draw.cpp the per-track flex/step handling (~520-640); in planar_draw.cpp tests, `ShapeFirst(PlanarTText(2), 1)` (how T2's Shape variant is made); in the domain-suite test file, `ContractedVariant`, `DrawingProgramJudge`, `PlanarDomainInputOf`.
+- D441: Slots v2 = `CheckPlanarDrawable` over contracted lines (D432) with the suite's rules. D442: Shape offers S-bends (k alternating offers per place; offers = 3 and D443's lattice rule carry all of V's 197); Slots decides which are used. With offers = 3 + D443 on, flex pairs: T1 123, T2 345, T3 711, 197 1980 (shape-5). One binary per offer would blow out; the question: does a two-stage solve avoid them?
+- Stage 1 (decide the S-bends): the uncontracted program (offers as flex pairs that may be 0; continuous where it can be; no cell rows: `pairwise` + `pairwise_all_faces`, no `RefinePlanarShapeCells`; the default rules). Stage 2 (sound solve): the contracted variant built from stage 1's drawing (`final_contract`'s mechanism: unused offers removed, used ones become steps), solved integer with grid, judged by `DrawingProgramJudge(DEFAULT_RULES)` and the domain.
+- Read first: DECISIONS D427, D432, D441, D442, D443; `PlanarDrawPipelineOptions::final_contract` and its implementation (planar_draw.cpp, how it builds the contracted variant from a drawing); shape-4's test (no cell rows) and shape-5's measurement test (how offers / D443 are passed); the seam (`DrawingProgramJudge`, `ContractedVariant`, `PlanarDomainInputOf`).
 
-## 2. Solves (T2's Shape variant; each 15 s cap, integer, grid on, tidy on, `corridor = true`; record status, ms, rows, columns, binaries)
-1. **Flex as today (uncontracted):** Shape's variant with its flex groups (inserts may be 0), `clearance = pairwise = pairwise_all_faces = true`.
-2. **All flex removed:** the variant with every flex pair erased (as `final_contract` erases an unused pair: the insert and its trailing flank removed, one straight piece left), so the only S-bends are Shape's `steps` (if T2's variant has none, say so).
-3. **Every flex pair kept as a step:** every flex insert becomes a step (a fixed bend pair, positive length), as `final_contract` does for a committed insert.
-4. Each Optimal drawing from 1-3: write it as a polyline, contract it (`ContractedVariant`), judge it with `DrawingProgramJudge(DEFAULT_RULES)` and the domain (`CheckPlanarDomain(PlanarDomainInputOf(...))`): accept/refuse and rules/breaks.
-5. Same three solves on T1 (`PlanarTText(1)`) for comparison.
-If a solve is Infeasible, give its conflict tags (the first 20); if it times out, say so (no retry with more time).
+## 2. Per hub: T1 (`PlanarTText(1)`), T2, T3, and 197 (`tools/junction/corpus/out/psg197` as shape-5 loads it)
+1. Shape's variant, flex placed with offers = 3, D443 on (and once with offers = 1, D443 off, as the baseline).
+2. Stage 1: status, ms, rows/columns, integer/binary counts; offers used (> 0).
+3. Stage 2: the contracted variant from stage 1 (reuse `final_contract`'s code path or its function; if it is only reachable inside `DrawPlanarPipeline`, call the pipeline with only the final stage and say how); status, ms, size; if Optimal: the judge's verdict on its contracted drawing and the domain's on its points (accept/refuse, rules/breaks).
+4. A table: hub x (offers, D443) x stage: status, ms, size, offers used, judge, domain.
+If stage 1 or 2 times out at 15 s, record it and move on.
 
 ## 3. Output
-`docs/junction-tool/wip/probes/slots/t2-measure.md`: a table (hub, variant form, status, ms, size, judge verdict, domain verdict) and a few lines of reading: which form gives a legal drawing fastest, and what that says about where S-bends must come from. Commit: `Doc: Junction: T2 and T1 straight from Shape through the drawing program (D441)`, ending `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+`docs/junction-tool/wip/probes/slots/two-stage.md` (the table, and three lines of reading: does stage 1 pick few offers; is stage 2 feasible and legal; where does time go). Commit `Doc: Junction: two-stage Slots measured on T1, T2, T3 and 197 (D441, D442)`, ending `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
 ## 4. Report (short)
 References read; commit; the table; the reading; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
