@@ -6292,3 +6292,91 @@ TEST_CASE("planar slots: T2 stage A elastic keep-apart diagnosis (lazy-5)", "[.]
 		std::cout << out << std::flush;
 	}
 }
+
+/** Slots step 0: T2 stage A round 1 cheap checks: which of coord_max, tidy, a length start, a fixed side or grid moves round 1 from Error to a result. */
+TEST_CASE("planar slots: T2 stage A round 1 cheap checks (step 0)", "[.][slotsstep0]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ofstream md(std::getenv("PLANAR_STEP0_OUT") != nullptr ? std::getenv("PLANAR_STEP0_OUT") : "slots-step0.md", std::ios::app);
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	const X1Fixture fa(v);
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.node_gaps = false;
+
+	PlanarDrawOptions o0 = sa;
+	o0.keep_apart_out = true;
+	o0.only_pairs_on = true;
+	const PlanarDrawResult d0 = CheckPlanarDrawable(v, 15.0, o0);
+	REQUIRE(d0.status == "Optimal");
+	const auto failing_of = [&](const PlanarDrawResult &r, const std::vector<std::string> &have) {
+		std::vector<const PlanarKeepApartPair *> failing;
+		for (const PlanarKeepApartPair &p : r.keep_apart) {
+			if (!p.skipped.empty() || p.candidates.empty()) continue;
+			if (std::ranges::find(have, p.tag) == have.end() && !PlanarKeepApartHolds(p, r.points)) failing.push_back(&p);
+		}
+		return failing;
+	};
+	const std::vector<const PlanarKeepApartPair *> f0 = failing_of(d0, {});
+	std::vector<std::string> tags;
+	for (const PlanarKeepApartPair *p : f0) tags.push_back(p->tag);
+	int biggest = 0;
+	for (const auto &track : d0.points) {
+		for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+	}
+	const int tight = std::max(64, (2 * biggest + 15) / 16 * 16);
+	const std::string head = std::format("\n### T2 stage A round 1 (offers 1, D443 off)\n\nround 0: {} ms {}, failing pairs {}; biggest {}; tight {}\n\n| run | change | status | ms | binaries | start_values | failing without rows |\n|---|---|---|---|---|---|---|\n", d0.status, static_cast<int>(d0.ms), f0.size(), biggest, tight);
+	md << head << std::flush;
+	std::cout << head << std::flush;
+	REQUIRE(f0.size() >= 40);
+	REQUIRE(f0.size() <= 60);
+
+	std::vector<std::pair<std::string, int>> fixed;
+	for (const PlanarKeepApartPair *p : f0) fixed.emplace_back(p->tag, LazyBestCandidate(*p, d0.points));
+	const char *names[] = {"none", "coord_max tight", "tidy off", "tight + tidy off", "R3 + start_lengths", "tight, fixed sides, no binaries", "R5 + grid off", "R3 + grid off"};
+	for (int run = 0; run < 8; run++) {
+		PlanarDrawOptions o = sa;
+		o.keep_apart_out = true;
+		o.only_pairs_on = true;
+		o.only_pairs = tags;
+		if (run == 1 || run == 3 || run == 4 || run == 5 || run == 6 || run == 7) o.coord_max = tight;
+		if (run == 2 || run == 3 || run == 4 || run == 7) o.tidy = false;
+		if (run == 4) o.start_lengths = &d0.lengths;
+		if (run == 5 || run == 6) {
+			o.only_pairs.clear();
+			o.fixed_pairs = fixed;
+		}
+		if (run == 6 || run == 7) o.grid = false;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
+		std::string fail = "-";
+		if (r.status == "Optimal") {
+			std::vector<std::string> have = tags;
+			for (const auto &[t, c] : fixed) {
+				if (run == 5 || run == 6) have.push_back(t);
+			}
+			fail = std::format("{}", failing_of(r, have).size());
+		}
+		const std::string row = std::format("| R{} | {} | {} | {} | {} | {} | {} |\n", run, names[run], r.status, static_cast<int>(r.ms), r.binaries, run == 4 ? std::format("{}", r.start_values) : "-", fail);
+		md << row << std::flush;
+		std::cout << row << std::flush;
+	}
+}
