@@ -15,6 +15,8 @@
 #include "../../../junction/planar/planar_domain.h"
 #include "../../../junction/planar/planar_domain_map.h"
 #include "../../../junction/planar/planar_draw.h"
+#include "../../../junction/planar/planar_hub.h"
+#include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_shape_layer.h"
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
@@ -3694,6 +3696,127 @@ TEST_CASE("planar domain: BR1 loads, its structure is a bridge and its base is l
 	const Config none{"base", {}, {}};
 	RunEncoding(f, nullptr, "BR1", {none}, "", DrawingProgramJudge("span+lead+endnode+crosspiece+grid+portzero"), &verdict);
 	CHECK(verdict == 0);
+}
+
+namespace {
+
+/** One text of the lines. */
+std::string JoinLines(const std::vector<std::string> &lines)
+{
+	std::string out;
+	for (const std::string &l : lines) out += l + "\n";
+	return out;
+}
+
+/** BR1's base drawing as a drawn hub (the hub is required to build). */
+PlanarDrawnHub BR1Hub(const BridgeFixture &f)
+{
+	std::vector<std::string> notes;
+	std::string why;
+	PlanarDrawnHub hub = PlanarDrawnHubOf(f.v, f.PointsOf(f.base), notes, why);
+	INFO("hub: " << why << " notes " << notes.size());
+	REQUIRE(why.empty());
+	return hub;
+}
+
+} // namespace
+
+TEST_CASE("planar domain: the drawn hub of BR1 holds its contract and renders for the back end", "[junction][planar][planardomain]")
+{
+	const BridgeFixture f;
+	RequireBaseLegal(f);
+	const PlanarDrawnHub hub = BR1Hub(f);
+	const std::vector<std::string> broken = CheckPlanarDrawnHub(hub);
+	INFO(JoinLines(broken));
+	CHECK(broken.empty());
+	const PlanarRender render = RenderPlanarDrawnHub(hub);
+	INFO("render: " << render.why);
+	REQUIRE(render.why.empty());
+
+	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator. */
+	std::map<std::pair<int, int>, unsigned> expected;
+	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		const std::vector<PlanarDomainPiece> pieces = RasterPlanarDomainTrack(hub.tracks[t].points).pieces;
+		for (uint32_t i = 0; i < pieces.size(); i++) {
+			const bool deck = std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t && i >= s.first && i <= s.last; });
+			if (!deck) expected[{pieces[i].tile.x, pieces[i].tile.y}] |= 1u << static_cast<unsigned>(pieces[i].track);
+		}
+	}
+	std::map<std::pair<int, int>, unsigned> actual;
+	for (const JunctionTrack &jt : render.layout.tracks) {
+		for (unsigned bit = 0; bit < 6; bit++) {
+			if (jt.tracks.Test(static_cast<Track>(bit))) actual[{jt.offset.x, jt.offset.y}] |= 1u << bit;
+		}
+	}
+	CHECK(actual == expected);
+
+	/* One bridge per structure at its head tiles. */
+	REQUIRE(render.layout.bridges.size() == hub.structures.size());
+	for (const PlanarDrawnHub::Structure &s : hub.structures) {
+		const std::vector<PlanarDomainPiece> pieces = RasterPlanarDomainTrack(hub.tracks[s.separator].points).pieces;
+		const TileIndexDiffC a = pieces[s.first].tile, b = pieces[s.last].tile;
+		const bool found = std::ranges::any_of(render.layout.bridges, [&](const JunctionBridge &br) {
+			const bool same = br.start.x == a.x && br.start.y == a.y && br.end.x == b.x && br.end.y == b.y;
+			const bool swapped = br.start.x == b.x && br.start.y == b.y && br.end.x == a.x && br.end.y == a.y;
+			return !br.tunnel && (same || swapped);
+		});
+		CHECK(found);
+	}
+
+	JunctionLayout layout = render.layout;
+	std::string why;
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &why);
+	INFO("signals: " << why);
+	CHECK(why.empty());
+}
+
+TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", "[junction][planar][planardomain]")
+{
+	const BridgeFixture f;
+	const PlanarDrawnHub good = BR1Hub(f);
+	REQUIRE(CheckPlanarDrawnHub(good).empty());
+
+	{
+		/* A path with two tracks swapped. */
+		PlanarDrawnHub hub = good;
+		size_t r = 0, p = 0;
+		for (; r < hub.routes.size(); r++) {
+			for (p = 0; p < hub.routes[r].paths.size() && hub.routes[r].paths[p].size() < 2; p++) {}
+			if (p < hub.routes[r].paths.size()) break;
+		}
+		REQUIRE(r < hub.routes.size());
+		std::swap(hub.routes[r].paths[p][0], hub.routes[r].paths[p][1]);
+		const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
+		INFO(JoinLines(lines));
+		REQUIRE(lines.size() == 1);
+		CHECK(lines[0].find(std::format("route {} path {}", hub.routes[r].name, p)) != std::string::npos);
+	}
+	{
+		/* A point off the grid. */
+		PlanarDrawnHub hub = good;
+		uint32_t t = 0;
+		while (t < hub.tracks.size() && hub.tracks[t].points.size() < 3) t++;
+		REQUIRE(t < hub.tracks.size());
+		hub.tracks[t].points[1][0] += 1;
+		const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
+		INFO(JoinLines(lines));
+		REQUIRE(lines.size() == 1);
+		CHECK(lines[0].find("track " + hub.tracks[t].name + " ") != std::string::npos);
+	}
+	{
+		/* A port track moved one tile inward (its port-side end, along its axis). */
+		PlanarDrawnHub hub = good;
+		size_t port = 0;
+		while (port < hub.ports.size() && hub.ports[port].side != PlanarSide::N) port++;
+		REQUIRE(port < hub.ports.size());
+		const uint32_t t = hub.ports[port].tracks[0];
+		hub.tracks[t].points.back()[1] += 2;
+		const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
+		INFO(JoinLines(lines));
+		REQUIRE(lines.size() == 1);
+		CHECK(lines[0].find(std::format("port {} ", port)) != std::string::npos);
+	}
 }
 
 namespace {

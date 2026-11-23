@@ -324,6 +324,13 @@ PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const Pla
 	return out;
 }
 
+PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
+{
+	PlanarRender out;
+	out.why = "stub";
+	return out;
+}
+
 PlanarPlan PlanPlanarJunction(const PlanarSeed &seed, const JunctionSpec &spec, const JunctionTerrain *terrain, TileIndexDiffC offset, bool hover)
 {
 	PlanarPlan plan;
