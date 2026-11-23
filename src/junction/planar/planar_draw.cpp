@@ -1830,6 +1830,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						int sum = 0;
 						for (size_t k = (from + 1) % n; k != to; k = (k + 1) % n) {
 							if (w[k].track >= nt || w[k].piece >= may_zero[w[k].track].size() || may_zero[w[k].track][w[k].piece]) continue;
+							/* A wall the face cuts at a crossing is walked only up to the crossing, which may lie anywhere on the piece: it guarantees nothing (D431). */
+							if (cut[k][0] != SIZE_MAX || cut[k][1] != SIZE_MAX) continue;
 							const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
 							sum += static_cast<int>(length[w[k].track][w[k].piece].coefficient) * (step[0] * normal[0] + step[1] * normal[1]);
 						}
