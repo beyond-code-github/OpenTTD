@@ -1796,35 +1796,47 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 							if (k == to) return true;
 						}
 					};
-					/* D426 probe: 0 not facing, 1 facing with anti-parallel walls, 2 facing at another angle. */
-					int facing_kind = 0;
-					if (options.facing_sides && options.sides_from != nullptr && w[i].heading % 8 != w[j].heading % 8 && monotone(i, j, axes[0].s) && monotone(j, i, PlanarModel::STEP[(w[j].heading + 6) % 8])) {
-						facing_kind = (((w[j].heading - w[i].heading) % 8) + 8) % 8 == 4 ? 1 : 2;
-					}
-					if (options.sides_by_walk && facing_kind == 0) {
-						/* D417: the guaranteed projection of the walls strictly between, each at its least length, onto the normal. */
-						const auto guaranteed = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
-							int sum = 0;
-							for (size_t k = (from + 1) % n; k != to; k = (k + 1) % n) {
-								if (w[k].track >= nt || w[k].piece >= may_zero[w[k].track].size() || may_zero[w[k].track][w[k].piece]) continue;
-								const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
-								sum += static_cast<int>(length[w[k].track][w[k].piece].coefficient) * (step[0] * normal[0] + step[1] * normal[1]);
-							}
-							return sum;
-						};
-						const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
-						if (monotone(i, j, axes[0].s) && (!options.walk_strict || guaranteed(i, j, axes[0].s) >= sp(axes[0]))) {
-							forced_axis = 0;
-							forced_side = 0;
-						} else if (w[i].heading % 4 != w[j].heading % 4) {
-							if (monotone(j, i, nj) && (!options.walk_strict || guaranteed(j, i, nj) >= sp(axes[1]))) {
-								forced_axis = 1;
-								forced_side = 1;
-							}
-						} else if (monotone(j, i, nj) && (!options.walk_strict || guaranteed(j, i, nj) >= sp(axes[0]))) {
-							forced_axis = 0;
-							forced_side = w[i].heading % 8 == w[j].heading % 8 ? 1 : 0;
+					/* D417: the guaranteed projection of the walls strictly between, each at its least length, onto the normal. */
+					const auto guaranteed = [&](size_t from, size_t to, const std::array<int, 2> &normal) {
+						int sum = 0;
+						for (size_t k = (from + 1) % n; k != to; k = (k + 1) % n) {
+							if (w[k].track >= nt || w[k].piece >= may_zero[w[k].track].size() || may_zero[w[k].track][w[k].piece]) continue;
+							const std::array<int, 2> step = PlanarModel::STEP[w[k].heading % 8];
+							sum += static_cast<int>(length[w[k].track][w[k].piece].coefficient) * (step[0] * normal[0] + step[1] * normal[1]);
 						}
+						return sum;
+					};
+					/* D426: 0 not facing, 1 facing with anti-parallel walls, 2 facing at another angle (only the walls decide it). */
+					const auto facing_of = [&]() {
+						if (w[i].heading % 8 != w[j].heading % 8 && monotone(i, j, axes[0].s) && monotone(j, i, PlanarModel::STEP[(w[j].heading + 6) % 8])) {
+							return (((w[j].heading - w[i].heading) % 8) + 8) % 8 == 4 ? 1 : 2;
+						}
+						return 0;
+					};
+					/* The candidate (axis * 2 + side) the walk rule takes, or -1. */
+					const auto walk_choice = [&](bool strict) {
+						const std::array<int, 2> nj = PlanarModel::STEP[(w[j].heading + 6) % 8];
+						if (monotone(i, j, axes[0].s) && (!strict || guaranteed(i, j, axes[0].s) >= sp(axes[0]))) return 0;
+						if (w[i].heading % 4 != w[j].heading % 4) {
+							if (monotone(j, i, nj) && (!strict || guaranteed(j, i, nj) >= sp(axes[1]))) return 3;
+						} else if (monotone(j, i, nj) && (!strict || guaranteed(j, i, nj) >= sp(axes[0]))) {
+							return w[i].heading % 8 == w[j].heading % 8 ? 1 : 0;
+						}
+						return -1;
+					};
+					int facing_kind = options.facing_sides && options.sides_from != nullptr ? facing_of() : 0;
+					if (options.sides_by_walk && facing_kind == 0) {
+						const int c = walk_choice(options.walk_strict);
+						if (c >= 0) {
+							forced_axis = c / 2;
+							forced_side = c % 2;
+						}
+					}
+					if (ka != nullptr) {
+						ka->walk = walk_choice(false);
+						ka->walk_strict = walk_choice(true);
+						ka->facing = facing_of() == 1 ? 0 : -1;
+						ka->inward = w[i].heading % 4 != w[j].heading % 4 ? 0b1001 : 0b0001;
 					}
 					if (options.sides_from == nullptr && forced_axis >= 0) {
 						result.walk_fixed++;
