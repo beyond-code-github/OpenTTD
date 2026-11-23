@@ -192,6 +192,7 @@ struct PlanarDrawOptions {
 	std::vector<std::pair<std::string, int>> forced_sides; ///< A probe: with sides_from, these sep pair tags ("sep <face> <i> <j>") take the given candidate (axis index * 2 + side) instead of the best one, written as one hard row tagged "sephard <face> <i> <j>" (sep_extremal endpoints).
 	std::vector<std::string> margin_tags; ///< A read-out: with sides_from, for these sep pair tags every candidate's margin on the reference is listed in PlanarDrawResult::sep_margins.
 	double sides_free_below = -1e30; ///< With sides_from: a pair whose best candidate's margin on the reference is below this keeps its binaries (all candidates, one sepdir row) instead of a fixed direction.
+	int least_extra = 0; ///< A measurement aid (domain suite bases): every piece with a least length gets its length variable's lower bound raised from 1 to 1 + least_extra (an axis piece in whole tiles, a diagonal in half tiles), so a tidy drawing has room. Free pieces (flex, steps, D412) keep 0.
 	int sides_pad = 0; ///< With pairwise: every separation's spacing is raised by this many half tiles (a direction-finding round, D418; never a rule).
 	const std::vector<std::vector<double>> *flex_zero_from = nullptr; ///< A measurement (D418): a flex insert whose length in this reference (`PlanarDrawResult::lengths`) is below flex_zero_below is held at 0.
 	double flex_zero_below = 0; ///< With flex_zero_from.

@@ -408,7 +408,7 @@ struct DrawnFixture : X1Fixture {
 	PlanarDrawResult drawing; ///< The base drawing.
 	std::string draw_why; ///< Why the base drawing is not legal, empty when it is.
 
-	DrawnFixture(const std::string &topo, const std::string &structure) : DrawnFixture(Shaped(topo, structure)) {}
+	DrawnFixture(const std::string &topo, const std::string &structure, int least_extra = 0) : DrawnFixture(Shaped(topo, structure), least_extra) {}
 
 private:
 	static PlanarShapeVariant Shaped(const std::string &topo, const std::string &structure)
@@ -430,7 +430,7 @@ private:
 		return v;
 	}
 
-	explicit DrawnFixture(PlanarShapeVariant variant) : X1Fixture(std::move(variant))
+	DrawnFixture(PlanarShapeVariant variant, int least_extra) : X1Fixture(std::move(variant))
 	{
 		options.corridor = true;
 		options.end_node = options.cross_piece = options.grid = true;
@@ -475,7 +475,9 @@ private:
 		}
 		std::string refine_why;
 		REQUIRE(RefinePlanarShapeCells(stripped, refine_why));
-		drawing = CheckPlanarDrawable(stripped, 15.0, options);
+		PlanarDrawOptions base_options = options;
+		base_options.least_extra = least_extra;
+		drawing = CheckPlanarDrawable(stripped, 15.0, base_options);
 		std::ostringstream log;
 		log << "status " << drawing.status << ", feasible " << drawing.feasible << ", rows " << drawing.rows << ", columns " << drawing.columns << ", " << drawing.ms << " ms";
 		if (drawing.status != "Optimal") {
@@ -1640,6 +1642,43 @@ TEST_CASE("planar draw: a node-to-out-port line keeps its least lengths (F2)", "
 	CHECK(integer);
 }
 
+TEST_CASE("planar draw: least_extra raises every non-free piece's least length", "[junction][planar][planardomain]")
+{
+	/* The F2 test's read-out: X1's base contracted (no flex), so its pieces have least lengths. */
+	const X1Fixture f;
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarProgram programs[2];
+	for (const int extra : {0, 2}) {
+		PlanarDrawOptions o = f.options;
+		o.strict_span = o.strict_zero = o.crossing_flanks = false;
+		o.keep_apart_out = true;
+		o.program_out = true;
+		o.build_only = true;
+		o.grid = true;
+		o.least_extra = extra;
+		const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+		REQUIRE(r.status == "built");
+		programs[extra / 2] = r.program;
+	}
+	REQUIRE(programs[0].lower.size() == programs[1].lower.size());
+	size_t raised = 0, free = 0;
+	for (size_t i = 0; i < programs[0].lower.size(); i++) {
+		if (programs[0].group[i] != "axis" && programs[0].group[i] != "diagonal") continue;
+		if (programs[0].lower[i] == 1) {
+			CHECK(programs[1].lower[i] == 3);
+			raised++;
+		} else if (programs[0].lower[i] == 0) {
+			CHECK(programs[1].lower[i] == 0);
+			free++;
+		}
+	}
+	CHECK(raised > 0);
+	CHECK(free > 0);
+}
+
 TEST_CASE("planar draw: a D412 port line off its centre line is rejected under port_zero (F5, D434)", "[junction][planar][planardomain]")
 {
 	/* F5: X1's in-port line AC1 = diagonal 1, east 2, diagonal 1 (its east run off the centre line). D412 frees every piece of it, so without port_zero nothing breaks; under port_zero the polyline's own travel (4) makes AC1 an ordinary line and its run is on the grid rows. */
@@ -2358,7 +2397,7 @@ namespace {
 struct Y1Fixture : DrawnFixture {
 	Y1Fixture() : DrawnFixture(
 		"topology Y1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: AD1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\nnode A1, D1 -> AD1\ncross A1: B1<\ncross B1: A1>\n",
-		"tunnel T1 A1: B1\ncopy A1 over T1\nstraight AC1: A1\nstraight BD1: B1\nstraight AD1: A1\n")
+		"tunnel T1 A1: B1\ncopy A1 over T1\nstraight AC1: A1\nstraight BD1: B1\nstraight AD1: A1\n", 2)
 	{
 	}
 
@@ -2424,7 +2463,7 @@ namespace {
 struct P1Fixture : DrawnFixture {
 	P1Fixture() : DrawnFixture(
 		"topology P1\nport W in E: A1\nport S in N: C1\nport E out E: AC1\nnode A1, C1 -> AC1\nprio A1\n",
-		"straight AC1: A1\n")
+		"straight AC1: A1\n", 2)
 	{
 	}
 
