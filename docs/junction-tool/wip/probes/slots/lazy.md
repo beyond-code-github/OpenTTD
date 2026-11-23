@@ -98,3 +98,32 @@ Stage B: 1 round, 1 of 318 pairs with rows, 6 ms. Judge accept (also without int
 Stage B: 2 rounds, 5 of 290 pairs with rows, 17 ms. Judge accept (also without interface rows); domain accept (0 breaks). Control (all rows, 1160 binaries): Optimal 234 ms, judge accept. Without the corridor option: judge refuse [node turn], domain refuse [connection] [node].
 
 Reading: the lazy-1 refusals ([grid] [keep apart] [length] [node] [crossing piece] [end run] [turn]) came from the option mismatch (no strict span, no lead/end-node/cross-piece rows, node gaps from piece lengths instead of travel, no port zero, no along references) and, with these options, from the missing corridor. No real gap remains on T1: lazy rows (1 and 5 pairs) give a drawing the judge and the domain both accept. T2 not re-run (not in this brief).
+
+
+# lazy-3: T2 through the aligned Slots path
+
+`SlotsOptions` now sets `corridor = true` (D421); the one-off line in the lazy test is gone. Stage A solves with `SlotsOptions(X1Fixture(v), DEFAULT_RULES)` (grid on, port zero with no reference = every port line ordinary) with `node_gaps` off (no reference yet); stage B as lazy-2. On every Infeasible round the test now runs the deletion (families of the first conflict, then tags of the last needed family, at most 30 solves). Exactness tests: `[planardomain]` 41 of 41 as before (the two "failed as expected" are the `[!shouldfail]` D384 test); gate: one SIGSEGV in "BR1 is exact under the default rule set" (known intermittent load crash), the test passes alone 3 of 3.
+
+### lazy-3 T2 offers 1 d443 off (flex pairs 99)
+
+| stage | round | status | ms | pairs with rows | binaries | failing pairs |
+|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 2430 | 0 | 0 | 51 |
+| A | 1 | Error | 15019 | 51 | 204 | - |
+| B | 0 | Infeasible | 37 | 28 | 112 | - |
+
+- Stage A: 2 rounds, not converged (round 1 hit the 15 s cap with 51 pairs, 204 binaries), 51 of 1945 pairs with rows.
+- Stage B starts from stage A round 0's drawing (no rows; round 1 errored). Its contracted variant: per-track turns hold, node turns (F6/F8) FAIL. The listing solve (no keep-apart rows) is Infeasible (25 ms); round 0 with the 28 seeded pairs is Infeasible; the all-rows control is Infeasible (552 ms, 2952 binaries).
+- Conflict of stage B with no keep-apart rows (49 rows, 7 families; 10 solves): families needed [piece] [cross] [end] [deck] ([port], [node], [order] drop out). First conflict rows: pieces of CD1, CD2, AF1, A2 2-5, B1 5-7, C2 0/1/4, D1 0-2, D2 0-2, E2 0-1, F1 3-5, F2 2-4; port gaps CD2, AF1, AF2; nodes 2, 3, 5, 6, 7; crossings 5 (B1/F1), 6 (B1/F2), 11 (C2/D1), 14 (D1/F2), 15 (D2/F1), 16 (D2/F2), 17 (E2/F1), 18 (prio:B1/C2); `order D1 3`; spans 2 and 3 (`end 0/2/3`, `deck 2`, `deck 3`). Tag deletion in [deck]: dropping `deck 2` and `deck 3` one after the other stays Infeasible while dropping the whole family is Optimal, so the first conflict's tags do not isolate the deck rows (another deck row takes their place); no tag-level minimum was reached in 10 solves.
+- Reading: the conflict is the spans (decks 2 and 3 with their end runs) of the tracks F1 and F2 that B1, D1, D2, E2 (and A2) cross, with the crossing pieces of those tracks as fixed by stage A's contracted writing (piece headings from the S-bend choice) and the nodes at their ends; with those pieces as written the crossers do not fit on the spans. The per-track turn check holds and the node-turn check fails, so stage A's contracted writing is not drawable; the failing node is not named by `NodeTurnsHold` (not isolated).
+
+### lazy-3 T2 offers 3 d443 on (flex pairs 345)
+
+| stage | round | status | ms | pairs with rows | binaries | failing pairs |
+|---|---|---|---|---|---|---|
+| A | 0 | Infeasible | 227 | 0 | 0 | - |
+
+- Stage A Infeasible with no keep-apart rows (still, with the aligned options). Conflict (39 rows, 5 families; 10 solves): needed [piece] [corridor] [cross]; within [cross]: `cross 12` and `cross 19` (D1 x E2, and D1 x prio:E2, the corridor copy beside E2), with E2 piece 0 and prio:E2 piece 0, the corridor open/close rows of prio:B1 and prio:E2, and D1 pieces 25-36 / C2 pieces 24-35. (`cross 2`, `cross 18` = B1/C2 and prio:B1/C2 drop out once the D1/E2 side is in.) Reading: D1 has to cross both E2 and E2's corridor copy within their single fixed piece each, and the corridor rows keep the copy at the fixed side offset along the parents' chain, so the two crossings cannot both be placed; this is the unchanged D443-on geometry, independent of lazy rows.
+- No stage B (stage A never Optimal).
+
+Stops: the brief's step 5 (the side of each added pair fixed from the previous round's drawing) is not run. `sides_from` fixes the side of every pair (not only the added ones), writes plain rows for all of them, ignores `only_pairs` and is incompatible with `keep_apart_out`, so the brief's mechanism does not exist in the options as named; a probe would need a production option (fix only the pairs in a list). Question for the orchestrator: add that option, or run `sides_from` over all pairs as the nearest reading.
