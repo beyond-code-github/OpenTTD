@@ -581,13 +581,50 @@ private:
 			const auto &p = drawing.points[t];
 			REQUIRE(p.size() == kept_of[t].size() + 1);
 			starts[Name(t)] = p[0];
-			std::map<uint32_t, uint32_t> at_event;
-			for (const uint32_t e : v.tracks[t].event_piece) at_event.emplace(stripped_of[t][e], e);
+			/* Per stripped piece, its event pieces (ascending) with the distance along the drawn run at which the crossing's other track meets it. */
+			std::map<uint32_t, std::map<uint32_t, int>> at_event;
+			const auto &events = v.structure.map.events[t];
+			for (size_t pos = 0; pos < events.size(); pos++) {
+				const uint32_t e = v.tracks[t].event_piece[pos];
+				const uint32_t k = stripped_of[t][e];
+				const auto &cr = v.structure.map.crossings[events[pos]];
+				const uint32_t o = cr.a == t ? cr.b : cr.a;
+				const auto &oe = v.structure.map.events[o];
+				const size_t opos = static_cast<size_t>(std::ranges::find(oe, events[pos]) - oe.begin());
+				REQUIRE(opos < oe.size());
+				const uint32_t ok = stripped_of[o][v.tracks[o].event_piece[opos]];
+				const Point &p0 = drawing.points[t][k], &p1 = drawing.points[t][k + 1], &r0 = drawing.points[o][ok], &r1 = drawing.points[o][ok + 1];
+				const int len = std::max(std::abs(p1[0] - p0[0]), std::abs(p1[1] - p0[1]));
+				const Point dp = {p1[0] - p0[0], p1[1] - p0[1]}, dr = {r1[0] - r0[0], r1[1] - r0[1]};
+				const int den = dp[0] * dr[1] - dp[1] * dr[0];
+				int dist = 0;
+				if (den != 0) {
+					int num = (r0[0] - p0[0]) * dr[1] - (r0[1] - p0[1]) * dr[0];
+					int d = den;
+					if (d < 0) { d = -d; num = -num; }
+					dist = std::clamp(len * num / d, 0, len);
+				}
+				auto &m = at_event[k];
+				auto it = m.emplace(e, dist);
+				if (!it.second) it.first->second = std::min(it.first->second, dist);
+			}
 			for (size_t k = 0; k + 1 < p.size(); k++) {
 				const int len = std::max(std::abs(p[k + 1][0] - p[k][0]), std::abs(p[k + 1][1] - p[k][1]));
 				if (len == 0) continue;
 				const auto ev = at_event.find(static_cast<uint32_t>(k));
-				g[Name(t)][ev != at_event.end() ? ev->second : kept_of[t][k]] = len;
+				if (ev == at_event.end()) {
+					g[Name(t)][kept_of[t][k]] = len;
+					continue;
+				}
+				/* Several event pieces on one drawn run (two crossings separated by a flex group): the run is cut midway between consecutive crossings, each event piece takes its share and the pieces between stay 0. */
+				std::vector<std::pair<uint32_t, int>> at(ev->second.begin(), ev->second.end());
+				int from = 0;
+				for (size_t j = 0; j < at.size(); j++) {
+					if (j > 0) REQUIRE(at[j - 1].second <= at[j].second);
+					const int to = j + 1 < at.size() ? (at[j].second + at[j + 1].second) / 2 : len;
+					if (to > from) g[Name(t)][at[j].first] = to - from;
+					from = std::max(from, to);
+				}
 			}
 		}
 		SetUp(h, g);
@@ -1302,6 +1339,15 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 		p.build_only = true;
 		if (!interface_rows) p.skip_rows = {"port ", "box"};
 		ro.program = CheckPlanarDrawable(plain, 5.0, p);
+		/* Contraction merges equal headings, so crossings of one structure on different pieces of its separator mean the separator bends inside its span: the game refuses that (the span rule), the program says so as unsupported (D436). */
+		const auto is_span_bend = [](const std::string &status) { return status.starts_with("unsupported: structure ") && status.ends_with("'s crossings sit on different pieces of its separator"); };
+		if (is_span_bend(ro.keep.status) || is_span_bend(ro.program.status)) {
+			RowsVerdict refused;
+			refused.rules.insert("span");
+			refused.accept = false;
+			g_last_readouts = Readouts();
+			return refused;
+		}
 		REQUIRE(ro.keep.status == "built");
 		REQUIRE(ro.program.status == "built");
 		if (lead) ro.lead = PlanarNodeLeadRows(cv.v);
@@ -2732,6 +2778,64 @@ TEST_CASE("planar domain: TT1 is exact under the default rule set", "[junction][
 	INFO("TT1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
 	CHECK(totals[3] == 0);
+}
+
+namespace {
+
+/** TS2 (domain-47): L1 widened to three lanes; W and E ports four tiles per lane (the default spacing is infeasible, see ts2-diag.md), N at its default. */
+struct TS2Fixture : StackFixture {
+	TS2Fixture() : StackFixture("topology TS2\nport W in E @ 2 6 10: AB1, AB2, AB3\nport N out N: A1, A2, A3\nport E out E @ 2 6 10: B1, B2, B3\nnode AB1 -> A1, B1\nnode AB2 -> A2, B2\nnode AB3 -> A3, B3\ncross B1: A2<, A3<\ncross B2: A3<\ncross A2: B1>\ncross A3: B2>, B1>\n", "tunnel T1 B1: A2, A3\ntunnel T2 B2: A3\nstraight AB1: B1\nstraight AB2: B2\nstraight AB3: B3\n") {}
+};
+
+} // namespace
+
+TEST_CASE("planar domain: TS2 loads, its tunnels have crossers and its base is legal", "[junction][planar][planardomain]")
+{
+	const TS2Fixture f;
+	INFO(f.shape_log << f.draw_log);
+	REQUIRE(f.v.structure.structures.size() == 2);
+	RequireBaseLegal(f);
+	std::vector<std::string> notes;
+	const PlanarDomainInput in = PlanarDomainInputOf(f.v, f.PointsOf(f.base), notes);
+	REQUIRE(in.structures.size() == 2);
+	CHECK(in.structures[0].tunnel);
+	CHECK(in.structures[1].tunnel);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on TS2", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_TS2");
+	REQUIRE(report_path != nullptr);
+	const TS2Fixture f;
+	RequireBaseLegal(f);
+	RunEncoding(f, report_path, "TS2", StackConfigs(f), f.Header(), DrawingProgramJudge(""));
+}
+
+TEST_CASE("planar domain: TS2 is exact under the default rule set", "[junction][planar][planardomainexact]")
+{
+	const TS2Fixture f;
+	RequireBaseLegal(f);
+	std::array<uint32_t, 8> totals{};
+	RunEncoding(f, nullptr, "TS2", StackConfigs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
+	INFO("TS2: too strict " << totals[2] << ", too loose " << totals[3]);
+	CHECK(totals[2] == 0);
+	CHECK(totals[3] == 0);
+}
+
+TEST_CASE("planar domain: a bend inside a tunnel's span is a span refusal by the judge and the domain (D436)", "[junction][planar][planardomain]")
+{
+	/* The first geometry of TS2's neighbourhood that hits it (node0 B1): B1, the separator of T1, steps sideways (an S-bend, pieces 1 to 3) before its crossings with A2 and A3, so after contraction the two crossings sit on different pieces of the separator. */
+	const TS2Fixture f;
+	Geometry g = f.base;
+	g["B1"] = {{0, 4}, {1, 1}, {2, 2}, {3, 1}, {4, 6}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	const RowsVerdict verdict = DrawingProgramJudge(DEFAULT_RULES)(f, *cv, true);
+	CHECK_FALSE(verdict.accept);
+	CHECK(verdict.rules == std::set<std::string>{"span"});
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(f.v, f.PointsOf(g), notes));
+	CHECK_FALSE(d.legal);
 }
 
 namespace {
