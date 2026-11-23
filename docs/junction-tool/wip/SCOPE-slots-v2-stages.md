@@ -25,3 +25,16 @@
 - If stage B's integer solve is still slow with fixed sides: where the time goes (grid parity, node gaps, the remaining free pairs).
 - If stage A's side guesses are wrong often on T3/197: whether to fall back to binaries for those pairs, or to one-axis compaction from a generous first drawing.
 - The remaining Shape item: V's 197 needs offers = 3 and D443 (shape-5); flex pairs 197: 1980 (only the LP stage sees them all).
+
+## Gemini's review (2026-11-23 evening), digested
+Adopted:
+- Step 0 order as planned: tighten every big-M from stage A's box and use a zero objective on T2's 51-pair instance first; if still slow, fix the binaries from stage A to separate branching from the parity lattice.
+- Per-pair big-M from bounds (not one global M): implement with the step-0 check.
+- Lazy rows: a pair's side is never flipped; a pair whose fixed side conflicts is promoted to binaries, so the set only grows (no cycling). lazy-4's freeing already does this; keep it monotone.
+- Stage B: fix sides only for pairs with comfortable stage-A margin (>= spacing + 2 half tiles); give binaries to the tight ones; MIP start from stage A's drawing; on infeasibility, one bounded retry releasing all of stage A's active pairs.
+- Compactness: a short warm-started polish (length objective, MIP start = stage B's legal drawing, 2-3 s) instead of one-axis compaction.
+Not adopted (with evidence):
+- "Non-parallel walls in one face have their sides fixed by the face walk, so 1 binary each": contradicted by sides-1 (`inward` restriction fails on 197 410 times, X1 268) and cells-2 (even inside convex cells the two-way inward choice fails 16-39 times per fixture). It holds only where the walk is monotone (walk_strict), which we already use.
+- Indicator constraints: `AddGenConstrIndicator` is Gurobi's API; our backend is HiGHS (src/junction/placement/junction_milp.cpp), which has none; per-pair tight M is the equivalent we can do.
+- 2-binary (log) encoding of the 4 candidates: fewer binaries but usually a weaker relaxation than one-hot; a measurable option only if step 0 leaves binaries as the bottleneck.
+To Pete: one-axis compaction parked (Gemini: diagonals and N/S pieces freeze with y, little freedom left; the polish pass is simpler). Reversible.
