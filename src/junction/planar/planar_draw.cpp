@@ -529,6 +529,21 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 	std::vector<std::vector<Length>> length(nt);
 	std::vector<std::vector<bool>> may_zero(nt);
 	std::map<uint32_t, int> grid_seed; ///< Grid (D382 probe): point variables whose parity the grid fixes.
+	/* Node gaps (SPEC-slots-lengths §8.1 node_leg, D400): a track between two nodes with no event travels 0 (a trident) or at least node_leg; the branch comes from the reference drawing (none: the ordinary branch). */
+	std::vector<bool> leg_zero(nt, false);
+	std::vector<bool> zero_track(nt, false); ///< Tracks held at zero (a trident leg, a zero port line): transparent to keep-apart.
+	std::vector<double> leg_reference(nt, 2 * rules.node_leg);
+	if (options.node_gaps) {
+		for (size_t t = 0; t < nt; t++) {
+			const auto &line = map.expanded.lines[t];
+			if (line.from.port || line.to.port || !map.events[t].empty()) continue;
+			if (options.node_gap_from != nullptr && t < options.node_gap_from->size()) {
+				leg_reference[t] = 0;
+				for (const double l : (*options.node_gap_from)[t]) leg_reference[t] += l;
+			}
+			leg_zero[t] = leg_reference[t] < 1;
+		}
+	}
 	for (size_t t = 0; t < nt; t++) {
 		const std::vector<int> &pieces = v.tracks[t].pieces;
 		if (pieces.empty()) return unsupported("track " + map.tracks[t].name + " has no piece");
@@ -583,6 +598,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			port_stretch = known && sum < 1;
 		}
 		if (port_stretch) free_piece.assign(pieces.size(), true);
+		if (options.port_zero && port_stretch) zero_track[t] = true;
+		if (leg_zero[t]) zero_track[t] = true;
+		/* D433: a zero node-to-node track (a trident) has free pieces, held at 0 by its leg zero row. */
+		if (leg_zero[t]) free_piece.assign(pieces.size(), true);
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
 		middles.insert(steps.begin(), steps.end());
@@ -674,11 +693,7 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			if (line.from.port || line.to.port || !map.events[t].empty()) continue;
 			Terms travel;
 			for (const Length &len : length[t]) travel.emplace_back(len.variable, len.coefficient);
-			double reference = 2 * rules.node_leg;
-			if (options.node_gap_from != nullptr && t < options.node_gap_from->size()) {
-				reference = 0;
-				for (const double l : (*options.node_gap_from)[t]) reference += l;
-			}
+			const double reference = leg_reference[t];
 			if (reference < 1) {
 				row(std::move(travel), -JunctionMilp::INF, 0, fmt::format("leg zero {}", map.tracks[t].name));
 			} else {
@@ -1460,6 +1475,16 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 				if (!clear_walls(w, f.face)) return unsupported(fmt::format("cell {} names a wall the variant lacks", f.face));
 				continue;
 			}
+			/* A zero track's walls are points (D433, D434): they are not separated, and the walls either side of them are adjacent. */
+			const auto is_zero_wall = [&](size_t k) { return w[k].track < nt && zero_track[w[k].track]; };
+			const auto adjacent = [&](size_t a, size_t b) {
+				for (const size_t step : {size_t{1}, n - 1}) {
+					size_t k = (a + step) % n;
+					while (k != b && is_zero_wall(k)) k = (k + step) % n;
+					if (k == b) return true;
+				}
+				return false;
+			};
 			for (size_t i = 0; i < n; i++) {
 				for (size_t j = i + 1; j < n; j++) {
 					PlanarKeepApartPair *ka = options.keep_apart_out ? &result.keep_apart.emplace_back(PlanarKeepApartPair{fmt::format("sep {} {} {}", f.face, i, j), {w[i].track, w[j].track}, {w[i].piece, w[j].piece}, "", "", {}}) : nullptr;
@@ -1467,7 +1492,11 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						if (ka != nullptr) ka->skipped = reason;
 						if (dumping) dump_skipped.emplace_back(fmt::format("sep {} {} {}", f.face, i, j), reason);
 					};
-					if (j == i + 1 || (i == 0 && j == n - 1)) {
+					if (is_zero_wall(i) || is_zero_wall(j)) {
+						skip("zero track");
+						continue;
+					}
+					if (adjacent(i, j)) {
 						skip("adjacent");
 						continue;
 					}
