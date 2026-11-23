@@ -5,6 +5,12 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 Budget: 90 minutes in all. The probe run in part 6 caps every solve at 15 s and runs once.
 
 ## 1. State
+- **Run 2 (2026-11-25).** Run 1 stopped at zero-length port tracks (BR1's AC1, BD1: the split sits on the port, D412). Its work is in the WIP commit `583d6eff49` (helper commit d0fe669219 done; planar_hub.{h,cpp} real; `RenderPlanarDrawnHub` a stub; tests A and B written). Start from it; when done, squash the WIP into the `Add:` commit (keep d0fe669219 as is). Rulings for run 2 (orchestrator, under D452):
+  1. **Zero-length tracks are tracks of the hub.** Hub nodes list every track at them, zero-length ones included (`in`/`out` from the track map's expanded nodes, not from `NodesOf`). `PlanarDomainInputOfHub` drops zero-length tracks from its nodes exactly as `NodesOf` does, so the domain sees what it sees today. The §4.1 promise stands as written.
+  2. **Render at a node with no piece before it on the path** (a split on the in port): its split switch is on piece 0 and it gets no arrival; a merge with no piece after it on the path likewise has its switch on the last piece and no next-piece logic. A zero-length track adds no pieces. Report what the signal pass does with such a split.
+  3. **The oracle skips domain breaks whose rule is `grid` or `turn`**: the rasterise promise already reports that track (one line per break).
+  4. **`PlanarDrawnHub::Structure` gets `int limit`** (the most middles, -1 none, as `PlanarDomainStructure::limit`), filled from the domain input, and `PlanarDomainInputOfHub` passes it on, so the span rule is judged through the hub.
+- Load limit (CPU instability): every jt run `JT_JOBS=4`, every direct cmake build `-j4`. Another agent works in ng2 in parallel: never touch ng2.
 - Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-e1`, head `<HEAD>`. Builds: Debug `build`, Release `build-rel`.
 - Design: DECISIONS D452 and `docs/junction-tool/wip/SPEC-slots-lengths.md` §4.1 (the drawn hub). Read §4.1 whole: it is the contract this step builds. Recon: `docs/junction-tool/wip/RECON-rig-v2.md`. Flat ground; no levels, no tunnels, rows not rendered (§4.1).
 

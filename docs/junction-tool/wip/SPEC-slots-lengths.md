@@ -37,7 +37,8 @@ Contents (all in one frame, half tiles, x east, y south; whole-tile shifted so e
 - **tracks:** per track `name`, `kind` (Line, Copy, Row as the track map's `PlanarTrack::Kind`), `points` in travel order (a legal track: `RasterPlanarDomainTrack` gives no rule). A zero-length track has one point.
 - **nodes:** per node `at` (its point), `in`, `out` (track indices), `split`.
 - **ports:** per port `side`, `in`, `tracks` (left to right across travel).
-- **structures:** per bridge or tunnel `separator` (track), `first` and `last` (the outermost pieces of the separator's raster: heads or portals), `ends` (pieces at each end belonging to the structure), `tunnel`, `crossers`.
+- **structures:** per bridge or tunnel `separator` (track), `first` and `last` (the outermost pieces of the separator's raster: heads or portals), `ends` (pieces at each end belonging to the structure), `tunnel`, `crossers`, `limit` (the most middles, -1 none).
+- Zero-length tracks (a split on its in port, D412) are tracks of the hub: nodes list them; the domain projection drops them from its nodes as `NodesOf` does.
 - **routes:** per route `name`, `prio`, `paths` (each a list of track indices from its entry port track to its exit port track, consecutive tracks meeting at a node; copies are tracks, so a doubled lane's two ways are two paths). Rows carry no route.
 
 What the contract promises (checked by its oracle, `CheckPlanarDrawnHub`): every track rasterises; every path's consecutive tracks meet at a node that lists them; every port track starts or ends on the box edge of its side; every structure's `first..last` lies on its separator's raster with axis end pieces; the domain judge (`CheckPlanarDomain` on the hub's tracks, nodes and structures) accepts.
