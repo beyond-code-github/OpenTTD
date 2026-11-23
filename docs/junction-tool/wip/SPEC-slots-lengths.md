@@ -30,6 +30,20 @@ Not decided here: headings (Shape), structures and kinds (Structure), levels and
 - Slots cost.
 - **Hand-on to Heights** (named now): the fixed footprint and every piece's tiles; ramps only on axis pieces (Heights' own rule).
 
+### 4.1 The drawn hub: the contract to Heights, Signals and every judge (D452, 2026-11-25)
+The engineer: "separate the contract from the version". The back end (Heights, Signals, the rig export) and the judges (the domain suite, the rig) read ONE typed hand-off, `PlanarDrawnHub`, never a solver's internals (v1's `PlanarRouteProgram` with copy masks, v2's `PlanarDrawResult`). Any solver version writes it; v1 keeps its own path until it is retired or adapted.
+
+Contents (all in one frame, half tiles, x east, y south; whole-tile shifted so every tile is >= 0):
+- **tracks:** per track `name`, `kind` (Line, Copy, Row as the track map's `PlanarTrack::Kind`), `points` in travel order (a legal track: `RasterPlanarDomainTrack` gives no rule). A zero-length track has one point.
+- **nodes:** per node `at` (its point), `in`, `out` (track indices), `split`.
+- **ports:** per port `side`, `in`, `tracks` (left to right across travel).
+- **structures:** per bridge or tunnel `separator` (track), `first` and `last` (the outermost pieces of the separator's raster: heads or portals), `ends` (pieces at each end belonging to the structure), `tunnel`, `crossers`.
+- **routes:** per route `name`, `prio`, `paths` (each a list of track indices from its entry port track to its exit port track, consecutive tracks meeting at a node; copies are tracks, so a doubled lane's two ways are two paths). Rows carry no route.
+
+What the contract promises (checked by its oracle, `CheckPlanarDrawnHub`): every track rasterises; every path's consecutive tracks meet at a node that lists them; every port track starts or ends on the box edge of its side; every structure's `first..last` lies on its separator's raster with axis end pieces; the domain judge (`CheckPlanarDomain` on the hub's tracks, nodes and structures) accepts.
+
+Readers: the domain input is a projection of the hub (tracks, nodes, structures). The render (`RenderPlanarDrawnHub`) gives Signals and Heights what v1's render gives them (`PlanarRender`: track routes, layout, signal network, node and port tiles), one `JunctionTrackRoute` per path, built by the one game rasteriser (`RasterizeJunctionRoute` on the path's move string, cross-checked tile by tile against the domain raster). Rows are not rendered in the first version: the signal pass places the prio element by its own search as in v1 (a known gap, to close when Signals reads rows from the hub).
+
 ## 5. Promise (tests at Slots' output, D367)
 - S-P1 Refinement: Shape's output unchanged; H1-H9, H11 still hold.
 - S-P2 Closure: every face closes; every point's position follows from its track's pieces.
