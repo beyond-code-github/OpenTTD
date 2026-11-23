@@ -56,3 +56,9 @@ Reading: the first conflict (every insert held at 0) is 192 rows naming 20 track
 - node_flank (probe option): every track end at a node keeps its end piece >= its least length (V's 197: 36 of 36). T1 stage A (flank + node_flank, no keep-apart): HiGHS Error 15 s; CP-SAT OPTIMAL (feasible) in 0.06 s. T2: HiGHS Error 15 s.
 
 Reading: on this problem class HiGHS is the bottleneck (T1: 0.06 s CP-SAT vs no incumbent in 15 s).
+
+## Incumbents, node flanks, T1 legal, T2 node 10 (2026-11-24)
+- JunctionMilp returned Error on a time limit even with a feasible incumbent: every 'no incumbent in 15 s' claim for a tidy-on run was unproven (T1 with flank + node flanks: HiGHS had a drawing at 1.4 s, 72 by 9.4 s, gap 11% at 15 s). Probe knob JUNCTION_MILP_INCUMBENT returns the incumbent. Tidy-off Errors (T2 flank 21.8 s, step 1) are real: there the first incumbent is optimal.
+- HiGHS mip_heuristic_run_feasibility_jump=true: no help on T1 (one root attempt, fails). CP-SAT's T1 first solution is its fj worker (43 ms); 1 worker: nothing in 60 s. Chuffed (free search) 21.7 s; Gecode nothing in 60 s (D450 benchmark, tools/junction/planar_fzn.py).
+- node_flank fixed: a node-end flank keeps its least length, a node-end insert is held at 0. T1 (flank + node_flank, incumbent): stage A 15 s (incumbent), turns hold, stage B 13 of 280 pairs 35 ms, polish 136 -> 130, judge accept, domain accept (0 breaks).
+- T2 (CP-SAT start): node 10 F8 persists: D1's Shape headings end '... 2 3 2' (last piece a flank at h2, length 2), E1 and trunk ED1 h2: Shape brings both legs in parallel. Upstream question: Shape's node rule vs F8 at node 10.

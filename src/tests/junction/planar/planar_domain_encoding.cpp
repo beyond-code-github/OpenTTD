@@ -6898,6 +6898,21 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (const char *dump = std::getenv("PLANAR_DUMP_TRACK"); dump != nullptr && a.status == "Optimal") {
+			/* Debug aid: one track's pieces, flex middles, stage A lengths and points. */
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				if (v.structure.map.tracks[t].name != dump) continue;
+				out << std::format("- {} dump {}: pieces", tag, dump);
+				for (const int p : v.tracks[t].pieces) out << " " << p;
+				out << " | flex";
+				for (const uint32_t m : v.tracks[t].flex) out << " " << m;
+				out << " | lengths";
+				for (const double l : a.lengths[t]) out << " " << l;
+				out << " | points";
+				for (const auto &pt : a.points[t]) out << std::format(" ({},{})", pt[0], pt[1]);
+				out << "\n";
+			}
+		}
 		if (a.status == "Infeasible") {
 			out << std::format("- {} conflict rows {}:", tag, a.conflict.size());
 			for (const std::string &c : a.conflict) out << " [" << c << "]";
@@ -7476,6 +7491,21 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
+		if (const char *dump = std::getenv("PLANAR_DUMP_TRACK"); dump != nullptr && a.status == "Optimal") {
+			/* Debug aid: one track's pieces, flex middles, stage A lengths and points. */
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				if (v.structure.map.tracks[t].name != dump) continue;
+				out << std::format("- {} dump {}: pieces", tag, dump);
+				for (const int p : v.tracks[t].pieces) out << " " << p;
+				out << " | flex";
+				for (const uint32_t m : v.tracks[t].flex) out << " " << m;
+				out << " | lengths";
+				for (const double l : a.lengths[t]) out << " " << l;
+				out << " | points";
+				for (const auto &pt : a.points[t]) out << std::format(" ({},{})", pt[0], pt[1]);
+				out << "\n";
+			}
+		}
 		if (a.status == "Infeasible") {
 			out << std::format("- {} conflict rows {}:", tag, a.conflict.size());
 			for (const std::string &c : a.conflict) out << " [" << c << "]";

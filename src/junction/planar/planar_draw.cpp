@@ -605,8 +605,10 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		/* node_flank: a leg's node-side piece keeps a least length, so the node's turn (one eighth off the trunk) never vanishes (V's PSG 197: 36 of 36 node-side flanks at least one piece). */
 		if (options.node_flank && !port_stretch && !leg_zero[t] && !pieces.empty()) {
 			const PlanarLine &line = map.expanded.lines[t];
-			if (!line.from.port) free_piece[0] = false;
-			if (!line.to.port) free_piece[pieces.size() - 1] = false;
+			const auto is_middle = [&](size_t i) { return std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end(); };
+			/* A flank keeps its least length; an insert flush against the node is held at 0 below (no S-bend starts on a node). */
+			if (!line.from.port && !is_middle(0)) free_piece[0] = false;
+			if (!line.to.port && !is_middle(pieces.size() - 1)) free_piece[pieces.size() - 1] = false;
 		}
 		may_zero[t] = free_piece;
 		std::set<uint32_t> middles(flex.begin(), flex.end());
@@ -619,8 +621,9 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const bool zero = options.flex_zero_from != nullptr && free_piece[i] && std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end() && t < options.flex_zero_from->size() && i < (*options.flex_zero_from)[t].size() && (*options.flex_zero_from)[t][i] < options.flex_zero_below;
 			const bool in_flex = std::ranges::find(flex, static_cast<uint32_t>(i)) != flex.end();
 			const bool free_track = std::ranges::find(options.flex_free_tracks, v.structure.map.tracks[t].name) != options.flex_free_tracks.end();
-			const bool reference = options.curve_flex_from != nullptr && in_flex && !free_track && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
-			const bool held = options.curve_flex_from != nullptr && in_flex && !reference && !free_track && !options.curve_flex_free;
+			const bool reference = options.curve_flex_from != nullptr && in_flex && !free_track && !(options.node_flank && !port_stretch && !leg_zero[t] && ((i == 0 && !map.expanded.lines[t].from.port) || (i + 1 == pieces.size() && !map.expanded.lines[t].to.port))) && t < options.curve_flex_from->size() && i < (*options.curve_flex_from)[t].size() && (*options.curve_flex_from)[t][i] >= options.curve_flex_above;
+			const bool node_end = options.node_flank && in_flex && !port_stretch && !leg_zero[t] && ((i == 0 && !map.expanded.lines[t].from.port) || (i + 1 == pieces.size() && !map.expanded.lines[t].to.port));
+			const bool held = node_end || (options.curve_flex_from != nullptr && in_flex && !reference && !free_track && !options.curve_flex_free);
 			positive.push_back(reference || lower > 0);
 			capped.push_back(zero || held);
 			length[t].push_back({var(reference ? 1 : lower, (zero || held) ? 0 : options.coord_max, (options.elastic ? (options.tidy ? options.elastic_tidy : 0) : (options.tidy ? 1 : 0)) + (in_flex ? (options.flex_weights != nullptr && t < options.flex_weights->size() && i < (*options.flex_weights)[t].size() ? (*options.flex_weights)[t][i] : options.flex_price) * (axis ? AXIS_LEAST : 1) : 0), axis ? "axis" : "diagonal"), axis ? AXIS_LEAST : 1});

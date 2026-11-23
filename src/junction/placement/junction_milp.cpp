@@ -167,6 +167,13 @@ JunctionMilp::Status JunctionMilp::Solve()
 		}
 
 		default:
+			/* Probe knob (unset: unchanged): JUNCTION_MILP_INCUMBENT returns a limit-reached solve's feasible incumbent as Optimal, with a note on stderr (it is not proven optimal). */
+			if (std::getenv("JUNCTION_MILP_INCUMBENT") != nullptr && highs.getInfo().primal_solution_status == kSolutionStatusFeasible) {
+				this->impl->values = highs.getSolution().col_value;
+				this->impl->objective = highs.getInfo().objective_function_value;
+				fmt::print(stderr, "JUNCTION_MILP_INCUMBENT: limit reached, incumbent {} accepted (dual bound {})\n", this->impl->objective, highs.getInfo().mip_dual_bound);
+				return Status::Optimal;
+			}
 			return Status::Error;
 	}
 }
