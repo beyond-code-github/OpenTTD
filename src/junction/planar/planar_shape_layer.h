@@ -157,10 +157,11 @@ std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v);
  * @param v The shaped variant; every track's flex is replaced.
  * @param why Receives "no flex: ..." on an internal inconsistency.
  * @param end_pieces Flex C (D420, the default): a free stretch of two or more pieces also gets the pairs, on its first and its last piece only; false is D402 (one-piece stretches only), the toggle.
- * @param lattice_flex A probe (shape-3): offer flex on stretches between crossings of one channel too (the lattice clause off).
+ * @param lattice_same_structure_only D443: the channel (lattice) clause applies only to a stretch whose two crossings belong to one structure; false keeps it for every pair of crossings with tracks of one channel.
+ * @param offers D442: alternating offers each way per place; 1 is one pair each way (flex C, D420). A place of piece heading h gets (h-1, h, h+1, h) repeated `offers` times, so any sequence of up to `offers` excursions in any order of directions is the used pairs with the rest zeroed.
  * @return False only on an internal inconsistency; the rule has no failure.
  */
-bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = true, bool lattice_flex = false);
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = true, bool lattice_same_structure_only = false, int offers = 1);
 
 /**
  * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first earlier one it is not a leg of one node with, none when every earlier one is such a leg (D388 (a), D403).

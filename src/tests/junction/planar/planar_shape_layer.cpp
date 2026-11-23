@@ -2000,3 +2000,225 @@ TEST_CASE("planar shape layer: H14 a lane that turns off its spine", "[junction]
 	}
 	CHECK(tested);
 }
+
+/** Remove every flex pair of a shaped variant (the pieces and the list), the event pieces back to before the flex. */
+static void StripFlexForOffers(PlanarShapeVariant &v)
+{
+	for (PlanarShapeTrack &track : v.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+}
+
+/**
+ * Whether the raw headings (mod 8, equal neighbours merged) of a stretch are the stretch's pieces with some flex pairs zeroed (a pair is its middle and the flank after it).
+ * @param track The flexed track.
+ * @param first The stretch's first piece.
+ * @param last The stretch's last piece.
+ * @param raw The raw headings.
+ * @return Whether the raw list is carried, counting each pair as used at most once.
+ */
+static bool StretchCarries(const PlanarShapeTrack &track, size_t first, size_t last, const std::vector<int> &raw)
+{
+	const auto mod8 = [](int h) { return ((h % 8) + 8) % 8; };
+	std::vector<int> r;
+	for (const int h : raw) {
+		if (r.empty() || r.back() != mod8(h)) r.push_back(mod8(h));
+	}
+	/* Reachable (index of the current run of r) after each piece; -1 start. */
+	std::set<size_t> states;
+	bool started = false;
+	for (size_t i = first; i <= last;) {
+		const bool flex = std::ranges::find(track.flex, static_cast<uint32_t>(i)) != track.flex.end() && i + 1 <= last;
+		std::set<size_t> next;
+		const auto consume = [&](const std::set<size_t> &from, size_t p, bool start) {
+			std::set<size_t> out;
+			const int h = mod8(track.pieces[p]);
+			if (start) {
+				if (!r.empty() && r[0] == h) out.insert(0);
+				return out;
+			}
+			for (const size_t s : from) {
+				if (r[s] == h) out.insert(s);
+				if (s + 1 < r.size() && r[s + 1] == h) out.insert(s + 1);
+			}
+			return out;
+		};
+		if (flex) {
+			/* Used: consume the middle then the flank; skipped: neither. */
+			std::set<size_t> used = consume(states, i, !started);
+			used = consume(used, i + 1, false);
+			next = used;
+			if (started) next.insert(states.begin(), states.end());
+			if (!started) next = used;
+			i += 2;
+			if (started || !next.empty()) started = started || !next.empty();
+		} else {
+			next = consume(states, i, !started);
+			started = true;
+			i++;
+		}
+		states = next;
+	}
+	return states.contains(r.size() - 1);
+}
+
+TEST_CASE("planar shape layer: Shape offers k alternating S-bends per place (D442)", "[junction][planar][planarshape]")
+{
+	const std::string text = "topology fray\nport W in E: AB1\nport E out E: A1\nport S out S: B1\nnode AB1 -> A1, B1\n";
+	const auto flexed = [&](int offers) {
+		ShapeCase c = MakeCase(text, "o0t0f0m0");
+		std::vector<std::pair<std::vector<int>, std::vector<uint32_t>>> tracks;
+		for (const PlanarTrack &t : c.v.structure.map.tracks) tracks.push_back({t.name == "B1" ? std::vector<int>{3, 4} : std::vector<int>{2}, {}});
+		SetTracks(c, tracks);
+		std::string why;
+		REQUIRE(PlacePlanarShapeFlex(c.v, why, true, false, offers));
+		return c.v.tracks[FrayTrack(c, "A1")];
+	};
+	const PlanarShapeTrack one = flexed(1), three = flexed(3);
+	/* A one-piece stretch of heading h = 2: the piece, then (h-1, h, h+1, h) per offer. */
+	CHECK(one.pieces == std::vector<int>({2, 1, 2, 3, 2}));
+	CHECK(three.pieces == std::vector<int>({2, 1, 2, 3, 2, 1, 2, 3, 2, 1, 2, 3, 2}));
+	CHECK(three.flex.size() == 6);
+	/* L3's list at base 2 (shifted from base 0) and L85's: carried with offers 3, not with 1. */
+	const std::vector<int> l3 = {2, 3, 2, 1, 2, 1, 2}, l85 = {2, 1, 2, 1, 2, 3, 2};
+	CHECK(StretchCarries(three, 0, three.pieces.size() - 1, l3));
+	CHECK(StretchCarries(three, 0, three.pieces.size() - 1, l85));
+	CHECK(!StretchCarries(one, 0, one.pieces.size() - 1, l3));
+	CHECK(!StretchCarries(one, 0, one.pieces.size() - 1, l85));
+	/* One each way is carried with offers 1, in either order. */
+	CHECK(StretchCarries(one, 0, one.pieces.size() - 1, {2, 1, 2, 3, 2}));
+	CHECK(StretchCarries(one, 0, one.pieces.size() - 1, {2, 3, 2}));
+}
+
+/** A file of the extractor's PSG 197 output (tools/junction/corpus/out/psg197). */
+static std::string ReadExtractor197(const std::string &name)
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/" + name);
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	return buffer.str();
+}
+
+/** PSG 197 loaded from the extractor files, unflexed. */
+static void LoadUnflexed197(PlanarTopology &topology, PlanarShapeVariant &v)
+{
+	std::string error;
+	topology = ParsePlanarTopology(ReadExtractor197("topology.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, ReadExtractor197("structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	std::string why;
+	REQUIRE(LoadPlanarShapeVariant(topology, structure, ReadExtractor197("shape.txt"), v, why));
+}
+
+/** The flex pairs of stretch k of the named line. */
+static size_t FlexInStretch(const PlanarShapeVariant &v, const std::string &line, size_t k)
+{
+	const PlanarTrackMap &map = v.structure.map;
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line || map.tracks[t].name != line) continue;
+		const PlanarShapeTrack &track = v.tracks[t];
+		const size_t first = k == 0 ? 0 : track.event_piece[k - 1], last = k == track.event_piece.size() ? track.pieces.size() - 1 : track.event_piece[k];
+		size_t n = 0;
+		for (const uint32_t m : track.flex) n += (m > first && m < last) ? 1 : 0;
+		return n;
+	}
+	FAIL("no line " << line);
+	return 0;
+}
+
+TEST_CASE("planar shape layer: a stretch between crossings of two structures on one channel gets flex (D443)", "[junction][planar][planarshape]")
+{
+	PlanarTopology topology;
+	PlanarShapeVariant v;
+	LoadUnflexed197(topology, v);
+	PlanarShapeVariant off = v, on = v;
+	std::string why;
+	REQUIRE(PlacePlanarShapeFlex(off, why, true, false));
+	REQUIRE(PlacePlanarShapeFlex(on, why, true, true));
+	/* V's L89, stretch 1: between its crossings of L78 (T37) and L74 (T39), both on channel C3. */
+	CHECK(FlexInStretch(off, "L89", 1) == 0);
+	CHECK(FlexInStretch(on, "L89", 1) == 2);
+}
+
+TEST_CASE("planar shape: offers and D443 measured on 197, T1, T2, T3 (shape-5)", "[.][planarpsg197]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	struct Config { int offers; bool d443; };
+	const std::vector<Config> configs = {{1, false}, {3, false}, {3, true}};
+	std::vector<std::pair<std::string, PlanarShapeVariant>> hubs;
+	{
+		PlanarTopology topology;
+		PlanarShapeVariant v;
+		LoadUnflexed197(topology, v);
+		hubs.emplace_back("197", v);
+	}
+	for (const int lanes : {1, 2, 3}) {
+		std::string error;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(lanes), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!r.variants.empty());
+		PlanarShapeVariant v;
+		std::string why;
+		REQUIRE(ShapePlanarStructureVariant(r.variants[0], v, why));
+		StripFlexForOffers(v);
+		hubs.emplace_back(fmt::format("T{}", lanes), v);
+	}
+	for (const auto &[name, base] : hubs) {
+		for (const Config &cfg : configs) {
+			PlanarShapeVariant v = base;
+			std::string why;
+			REQUIRE(PlacePlanarShapeFlex(v, why, true, cfg.d443, cfg.offers));
+			size_t pairs = 0;
+			for (const PlanarShapeTrack &t : v.tracks) pairs += t.flex.size();
+			WARN(fmt::format("SHAPE5 {} offers {} d443 {}: flex pairs {}", name, cfg.offers, cfg.d443, pairs));
+		}
+	}
+	/* V's steps carried per stretch with (3, on). */
+	for (const Config &cfg : configs) {
+		PlanarShapeVariant v = hubs[0].second;
+		std::string why;
+		REQUIRE(PlacePlanarShapeFlex(v, why, true, cfg.d443, cfg.offers));
+		std::istringstream steps(ReadExtractor197("steps.txt"));
+		std::string line;
+		size_t listed = 0, carried = 0;
+		while (std::getline(steps, line)) {
+			if (!line.starts_with("step ")) continue;
+			const size_t hash = line.find(" # ");
+			std::istringstream in(line.substr(5, hash == std::string::npos ? std::string::npos : hash - 5));
+			std::string name;
+			size_t k;
+			char colon;
+			in >> name >> k >> colon;
+			std::vector<int> raw;
+			int x;
+			while (in >> x) raw.push_back(x);
+			listed++;
+			bool ok = false;
+			for (uint32_t t = 0; t < v.tracks.size(); t++) {
+				if (v.structure.map.tracks[t].kind != PlanarTrack::Kind::Line || v.structure.map.tracks[t].name != name) continue;
+				const PlanarShapeTrack &track = v.tracks[t];
+				const size_t first = k == 0 ? 0 : track.event_piece[k - 1], last = k == track.event_piece.size() ? track.pieces.size() - 1 : track.event_piece[k];
+				ok = StretchCarries(track, first, last, raw);
+			}
+			if (ok) {
+				carried++;
+			} else {
+				WARN(fmt::format("SHAPE5 offers {} d443 {}: not carried {} {}: {}", cfg.offers, cfg.d443, name, k, line.substr(5, hash == std::string::npos ? std::string::npos : hash - 5)));
+			}
+		}
+		WARN(fmt::format("SHAPE5 offers {} d443 {}: V's step stretches {} carried {}", cfg.offers, cfg.d443, listed, carried));
+	}
+}
