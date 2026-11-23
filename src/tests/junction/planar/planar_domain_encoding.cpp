@@ -1419,6 +1419,16 @@ struct SideStats {
 	size_t pairs = 0; ///< Pairs with rows.
 	size_t two_way = 0; ///< Pairs whose inward mask holds two candidates (not forced).
 	SideRule walk, strict, facing, both, inward;
+	/* sides-5: undecided pairs (neither walk_strict nor facing forces a side), those a third wall implies, and the margins. */
+	size_t decided = 0, implied = 0, undecided = 0, implied_failed = 0;
+	std::vector<std::string> implied_first;
+	struct Ident {
+		std::array<uint32_t, 2> tracks, pieces;
+		bool conflict = false;
+		bool seen_und = false, seen_still = false;
+		int least_und = INT_MAX, least_still = INT_MAX;
+	};
+	std::map<std::string, Ident> idents; ///< By tag.
 };
 SideStats *g_sides_stats = nullptr;
 
@@ -1488,6 +1498,91 @@ void SidesAccumulate(SideStats &st, const X1Fixture &f, const std::string &pkey,
 			}
 		}
 	}
+
+	/* sides-5: decided = walk_strict or facing forces a side; implied = a third wall k has both (i,k) and (k,j) forced (or implied) on the same direction s. */
+	struct Rel {
+		int face;
+		std::array<int, 2> s;
+		int before, after;
+		int spacing;
+	};
+	struct PairId {
+		int face, i, j;
+	};
+	std::vector<Rel> rels;
+	std::vector<std::pair<const PlanarKeepApartPair *, PairId>> und;
+	for (const PlanarKeepApartPair &pair : pairs) {
+		if (!pair.skipped.empty() || pair.candidates.empty()) continue;
+		PairId id{};
+		{
+			std::istringstream tag_in(pair.tag.substr(4));
+			tag_in >> id.face >> id.i >> id.j;
+			REQUIRE(!tag_in.fail());
+		}
+		const int c = pair.walk_strict >= 0 ? pair.walk_strict : pair.facing;
+		if (c >= 0) {
+			st.decided++;
+			const PlanarKeepApartPair::Candidate &cand = pair.candidates[c];
+			rels.push_back({id.face, cand.s, (c & 1) == 0 ? id.i : id.j, (c & 1) == 0 ? id.j : id.i, cand.spacing});
+		} else {
+			und.emplace_back(&pair, id);
+		}
+	}
+	st.undecided += und.size();
+	std::vector<bool> is_implied(und.size(), false);
+	const auto margin_of = [&](const PlanarKeepApartPair &pair) {
+		int best = INT_MIN;
+		for (const PlanarKeepApartPair::Candidate &c : pair.candidates) best = std::max(best, std::min(CandidateMargin(c, points), 1000));
+		return best;
+	};
+	for (bool changed = true; changed;) {
+		changed = false;
+		for (size_t u = 0; u < und.size(); u++) {
+			if (is_implied[u]) continue;
+			const PlanarKeepApartPair &pair = *und[u].first;
+			const PairId id = und[u].second;
+			for (int axis = 0; axis < 2 && !is_implied[u]; axis++) {
+				const PlanarKeepApartPair::Candidate &c0 = pair.candidates[axis * 2];
+				for (int side = 0; side < 2 && !is_implied[u]; side++) {
+					const int a = side == 0 ? id.i : id.j, b = side == 0 ? id.j : id.i;
+					for (const Rel &r1 : rels) {
+						if (r1.face != id.face || r1.s != c0.s || r1.before != a) continue;
+						for (const Rel &r2 : rels) {
+							if (r2.face != id.face || r2.s != c0.s || r2.before != r1.after || r2.after != b) continue;
+							if (c0.spacing > r1.spacing + r2.spacing) continue;
+							is_implied[u] = true;
+							const int via = r1.after;
+							rels.push_back({id.face, c0.s, a, b, c0.spacing}); // r1 and r2 are invalid from here.
+							const int cand = axis * 2 + side;
+							st.implied++;
+							PlanarKeepApartPair one = pair;
+							one.candidates = {pair.candidates[cand]};
+							if (!PlanarKeepApartHolds(one, points)) {
+								st.implied_failed++;
+								if (st.implied_first.size() < 5) st.implied_first.push_back(std::format("{} | {} | via wall {} | candidate {} | margin {}", pair.tag, pkey, via, cand, CandidateMargin(pair.candidates[cand], points)));
+							}
+							changed = true;
+							goto next_pair;
+						}
+					}
+				}
+			}
+		next_pair:;
+		}
+	}
+	/* Identity-level margins: every pair of the read-out (by tag), its least best-candidate margin while undecided / still undecided. */
+	for (size_t u = 0; u < und.size(); u++) {
+		const PlanarKeepApartPair &pair = *und[u].first;
+		SideStats::Ident &e = st.idents.try_emplace(pair.tag, SideStats::Ident{pair.tracks, pair.pieces}).first->second;
+		if (e.tracks != pair.tracks || e.pieces != pair.pieces) e.conflict = true;
+		const int m = margin_of(pair);
+		e.seen_und = true;
+		e.least_und = std::min(e.least_und, m);
+		if (!is_implied[u]) {
+			e.seen_still = true;
+			e.least_still = std::min(e.least_still, m);
+		}
+	}
 }
 
 /** The stats as report text lines. */
@@ -1500,6 +1595,27 @@ std::string SidesText(const std::string &name, const SideStats &st)
 		o << std::format("  {}: forced {} ({:.1f}%) failed {}\n", rule, r->forced, pct(r->forced), r->failed);
 		for (const std::string &line : r->first) o << "    " << line << "\n";
 	}
+	o << std::format("  sides-5 instances: pairs {} decided {} implied {} still {} implied-failures {}\n", st.pairs, st.decided, st.implied, st.undecided - st.implied, st.implied_failed);
+	for (const std::string &line : st.implied_first) o << "    " << line << "\n";
+	size_t und = 0, still = 0, conflict = 0;
+	std::array<size_t, 4> und_ge{}, still_ge{};
+	for (const auto &[tag, e] : st.idents) {
+		if (e.conflict) {
+			conflict++;
+			continue;
+		}
+		if (e.seen_und) {
+			und++;
+			for (size_t k = 0; k < 4; k++) und_ge[k] += e.least_und >= (k == 0 ? 0 : 1 << k) ? 1 : 0;
+		}
+		if (e.seen_still) {
+			still++;
+			for (size_t k = 0; k < 4; k++) still_ge[k] += e.least_still >= (k == 0 ? 0 : 1 << k) ? 1 : 0;
+		}
+	}
+	const auto share = [](size_t n, size_t d) { return d == 0 ? 0.0 : 100.0 * static_cast<double>(n) / static_cast<double>(d); };
+	o << std::format("  sides-5 identities: undecided {} (tag-conflict skipped {}): least margin >=0 {:.1f}% >=2 {:.1f}% >=4 {:.1f}% >=8 {:.1f}%\n", und, conflict, share(und_ge[0], und), share(und_ge[1], und), share(und_ge[2], und), share(und_ge[3], und));
+	o << std::format("  sides-5 identities: still undecided {}: least margin >=0 {:.1f}% >=2 {:.1f}% >=4 {:.1f}% >=8 {:.1f}%\n", still, share(still_ge[0], still), share(still_ge[1], still), share(still_ge[2], still), share(still_ge[3], still));
 	return o.str();
 }
 
