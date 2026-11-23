@@ -2057,3 +2057,67 @@ TEST_CASE("planar domain: our keep-apart against the domain on L1", "[.][planard
 	}
 	RunEncoding(f, report_path, "L1", {a, b}, f.Header());
 }
+
+namespace {
+
+/** Y1: two lanes from W and S, the W lane's A1 crossing under B1 through a tunnel with a copy beside it, merging into AD1 (domain-20). */
+struct Y1Fixture : DrawnFixture {
+	Y1Fixture() : DrawnFixture(
+		"topology Y1\nport W in E: AC1\nport S in N: BD1\nport N out N: C1, B1\nport E out E: AD1\nnode AC1 -> C1, A1\nnode BD1 -> B1, D1\nnode A1, D1 -> AD1\ncross A1: B1<\ncross B1: A1>\n",
+		"tunnel T1 A1: B1\ncopy A1 over T1\nstraight AC1: A1\nstraight BD1: B1\nstraight AD1: A1\n")
+	{
+	}
+
+	/** The header: Shape's headings, the base drawing, the base polyline's runs. */
+	std::string Header() const
+	{
+		std::ostringstream out;
+		out << "Shape's headings (the heading solve of ShapePlanarStructureVariant):\n" << shape_log << "base drawing (the flex-stripped variant, CheckPlanarDrawable 15 s, grid, tidy, integer, corridor, lead rows): " << draw_log << "\n";
+		const std::vector<Points> base_points = PointsOf(base);
+		for (uint32_t t = 0; t < n; t++) {
+			out << "base " << Name(t) << ": start (" << base_points[t].front()[0] << "," << base_points[t].front()[1] << ") lengths";
+			for (uint32_t k = 0; k < heads.at(Name(t)).size(); k++) {
+				const auto it = base.find(Name(t));
+				const auto l = it == base.end() ? std::map<uint32_t, int>::const_iterator() : it->second.find(k);
+				out << " " << (it != base.end() && l != it->second.end() ? l->second : 0);
+			}
+			out << "\n";
+		}
+		return out.str();
+	}
+};
+
+} // namespace
+
+TEST_CASE("planar domain: Y1 loads and its base is legal", "[junction][planar][planardomain]")
+{
+	const Y1Fixture f;
+	INFO(f.shape_log << f.draw_log);
+	RequireBaseLegal(f);
+	int verdict = 1;
+	const Config none{"base", {}, {}};
+	RunEncoding(f, nullptr, "Y1", {none}, "", "span+lead+endnode+crosspiece+grid", &verdict);
+	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: our keep-apart against the domain on Y1", "[.][planardomainenc]")
+{
+	const char *report_path = std::getenv("PLANAR_DOMAIN_REPORT_Y1");
+	REQUIRE(report_path != nullptr);
+	const Y1Fixture f;
+	RequireBaseLegal(f);
+	const std::vector<int> runs = {2, 4, 6, 8, 10};
+	/* Y1a: B1's N run before its crossing (piece 4) moves the crossing along the span, B1's last piece absorbing so the port end stays; A1's last run before the copy's split node (piece 4) in {2..10}, A1's first run absorbing so the split stays put. The copy is rigid (a corridor). */
+	Config a{"Y1a", {}, {}};
+	a.axes.emplace_back("B1", 4, std::vector<int>{2, 4, 6, 8, 10, 12});
+	a.absorbers.emplace_back("B1", static_cast<uint32_t>(f.heads.at("B1").size() - 1));
+	a.axes.emplace_back("A1", 4, runs);
+	a.absorbers.emplace_back("A1", 0);
+	/* Y1b: the mirror at the merge: AD1's first run in {2..10}, its last piece absorbing; A1#8's last run in {2..10}, its first run absorbing. */
+	Config b{"Y1b", {}, {}};
+	b.axes.emplace_back("AD1", 0, runs);
+	b.absorbers.emplace_back("AD1", static_cast<uint32_t>(f.heads.at("AD1").size() - 1));
+	b.axes.emplace_back("A1#8", 4, runs);
+	b.absorbers.emplace_back("A1#8", 0);
+	RunEncoding(f, report_path, "Y1", {a, b}, f.Header());
+}
