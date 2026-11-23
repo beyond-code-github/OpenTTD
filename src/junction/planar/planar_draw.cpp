@@ -254,11 +254,19 @@ static std::shared_ptr<PlanarProgramPlan> BuildPlanarProgramPlan(const PlanarPro
 		return std::vector<uint32_t>(tracks.begin(), tracks.end());
 	};
 	const auto is_equality = [](const PlanarProgram::Row &r) { return std::isfinite(r.lower) && r.lower == r.upper; };
+	/* A grid half is solved from its own link row (its definition), so a row rewritten over it is checked, not used to solve it (domain-27). */
+	std::vector<uint32_t> order;
+	for (uint32_t ri = 0; ri < program.rows.size(); ri++) {
+		if (program.rows[ri].tag == "grid link") order.push_back(ri);
+	}
+	for (uint32_t ri = 0; ri < program.rows.size(); ri++) {
+		if (program.rows[ri].tag != "grid link") order.push_back(ri);
+	}
 	bool changed = true;
 	while (changed) {
 		changed = false;
 		std::map<std::pair<uint32_t, uint32_t>, std::vector<uint32_t>> pairs;
-		for (uint32_t ri = 0; ri < program.rows.size(); ri++) {
+		for (const uint32_t ri : order) {
 			const PlanarProgram::Row &r = program.rows[ri];
 			if (!is_equality(r)) continue;
 			std::vector<uint32_t> unknown;

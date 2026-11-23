@@ -1829,6 +1829,39 @@ TEST_CASE("planar draw: a D412 port line off its centre line is rejected under p
 	}
 }
 
+TEST_CASE("planar domain: a port row broken under grid is blamed on the port row, not the grid link (domain-27)", "[junction][planar][planardomain]")
+{
+	/* K1's first [grid] too-strict example: A1:1*1,0*6,;ABC1:2*4,;B1:2*12,;BC1:2*4,;C1:3*1,4*6,; (A1 ends short of the box edge, so it is off interface). */
+	const K1Fixture f;
+	Geometry g = f.base;
+	g["A1"] = {{0, 1}, {9, 6}};
+	g["C1"] = {{0, 1}, {9, 6}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	const std::vector<std::vector<double>> from = PortZeroFrom(cv->points);
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	o.grid = true;
+	o.port_zero = true;
+	o.port_zero_from = &from;
+	const std::vector<std::string> broken = CheckPlanarProgramOnPoints(CheckPlanarDrawable(plain, 5.0, o).program, cv->points).broken;
+	bool port = false, link = false;
+	std::string all;
+	for (const std::string &b : broken) {
+		port = port || (b.starts_with("port ") && b.find(" edge") != std::string::npos);
+		link = link || b.starts_with("grid link");
+		all += b + "; ";
+	}
+	INFO("broken: " << all);
+	CHECK(port);
+	CHECK(!link);
+}
+
 TEST_CASE("planar draw: port_zero holds a zero D412 line at 0 and frees an ordinary one never (D434)", "[junction][planar][planardomain]")
 {
 	const X1Fixture f;

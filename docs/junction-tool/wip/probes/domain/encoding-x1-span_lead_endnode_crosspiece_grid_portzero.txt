@@ -8,51 +8,33 @@ node lead rows, configuration S2: 90
 node lead rows, configuration cross0: 3
 node lead rows, configuration node0: 4
 node lead rows, configuration node1: 0
-enumeration wall 0.704363 s
+enumeration wall 0.694861 s
 
-wall S1: 0.163101 s
+wall S1: 0.159774 s
 enumeration S1: blind 525 geometries (189 on the grid, 336 off; 0 more skipped, an absorbing piece had no length); by construction 189 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == S1 ==
   both accept: 1 polylines (1 geometries)
   both reject: 273 polylines (298 geometries)
-  too strict: 42 polylines (74 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 149 polylines (152 geometries)
-  off interface: 0 polylines (0 geometries)
+  off interface: 42 polylines (74 geometries)
     other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
- too strict, by the kept values of the failing pairs:
-  [grid] polylines 15 (geometries 27)
-    varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
+    off interface, varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*16,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-  [grid | port] polylines 27 (geometries 47)
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*6,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=4 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] B1[0x12] A1[2x16] D1[1x1,2x8]
+      port row broken: port N edge C1
+      port row broken: port N edge B1
+ too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall S2: 0.249728 s
+wall S2: 0.249549 s
 enumeration S2: blind 600 geometries (216 on the grid, 384 off; 0 more skipped, an absorbing piece had no length); by construction 216 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == S2 ==
   both accept: 1 polylines (3 geometries)
@@ -89,47 +71,25 @@ enumeration S2: blind 600 geometries (216 on the grid, 384 off; 0 more skipped, 
       program row broken: port E gap D1
  too loose, by domain break rules:
 
-wall N1: 0.232556 s
+wall N1: 0.227486 s
 enumeration N1: blind 576 geometries (96 on the grid, 480 off; 0 more skipped, an absorbing piece had no length); by construction 96 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == N1 ==
   both accept: 1 polylines (4 geometries)
   both reject: 435 polylines (528 geometries)
-  too strict: 27 polylines (33 geometries)
+  too strict: 0 polylines (0 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 0 polylines (0 geometries)
-  off interface: 5 polylines (11 geometries)
-    off interface, varied: C1.0=1 C1.1=2 C1.2=0 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,;D1:1*1,2*8,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x4] B1[0x10] A1[2x16] D1[1x1,2x8]
+  off interface: 32 polylines (44 geometries)
+    off interface, varied: C1.0=0 C1.1=0 C1.2=1 A1.0=0 A1.1=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x1,0x2] B1[0x10] A1[2x16] D1[1x1,2x8]
+      port row broken: port N edge C1
       port row broken: port N gap B1
  too strict, by the kept values of the failing pairs:
-  [grid] polylines 4 (geometries 4)
-    varied: C1.0=1 C1.1=2 C1.2=2 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,1*2,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: C1.0=1 C1.1=4 C1.2=2 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*4,1*2,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: C1.0=3 C1.1=2 C1.2=0 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*4,;D1:1*1,2*8,;
-      program row broken: grid link
-  [grid | port] polylines 23 (geometries 29)
-    varied: C1.0=0 C1.1=0 C1.2=1 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: C1.0=1 C1.1=4 C1.2=0 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*1,0*6,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: C1.0=2 C1.1=0 C1.2=3 A1.0=0 A1.1=0
-      polyline A1:2*16,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*5,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
  too loose, by domain break rules:
 
-wall node0 AC1: 0.0020464 s
+wall node0 AC1: 0.00206551 s
 enumeration node0 AC1: blind 10 geometries (6 on the grid, 4 off; 17 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 AC1 ==
   both accept: 1 polylines (6 geometries)
@@ -142,7 +102,7 @@ enumeration node0 AC1: blind 10 geometries (6 on the grid, 4 off; 17 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 C1: 0.00111107 s
+wall node0 C1: 0.00105845 s
 enumeration node0 C1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 C1 ==
   both accept: 1 polylines (6 geometries)
@@ -155,7 +115,7 @@ enumeration node0 C1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node0 A1: 0.00977657 s
+wall node0 A1: 0.00996242 s
 enumeration node0 A1: blind 27 geometries (15 on the grid, 12 off; 0 more skipped, an absorbing piece had no length); by construction 15 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node0 A1 ==
   both accept: 1 polylines (9 geometries)
@@ -174,7 +134,7 @@ enumeration node0 A1: blind 27 geometries (15 on the grid, 12 off; 0 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 BD1: 0.000702927 s
+wall node1 BD1: 0.000692146 s
 enumeration node1 BD1: blind 4 geometries (3 on the grid, 1 off; 23 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 BD1 ==
   both accept: 1 polylines (3 geometries)
@@ -187,7 +147,7 @@ enumeration node1 BD1: blind 4 geometries (3 on the grid, 1 off; 23 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 B1: 0.00387053 s
+wall node1 B1: 0.00372641 s
 enumeration node1 B1: blind 17 geometries (9 on the grid, 8 off; 10 more skipped, an absorbing piece had no length); by construction 9 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 B1 ==
   both accept: 1 polylines (8 geometries)
@@ -206,7 +166,7 @@ enumeration node1 B1: blind 17 geometries (9 on the grid, 8 off; 10 more skipped
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall node1 D1: 0.000477118 s
+wall node1 D1: 0.00049847 s
 enumeration node1 D1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == node1 D1 ==
   both accept: 1 polylines (3 geometries)
@@ -219,7 +179,7 @@ enumeration node1 D1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped,
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 B1: 0.00152121 s
+wall cross0 B1: 0.00143561 s
 enumeration cross0 B1: blind 10 geometries (4 on the grid, 6 off; 35 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 B1 ==
   both accept: 1 polylines (3 geometries)
@@ -238,7 +198,7 @@ enumeration cross0 B1: blind 10 geometries (4 on the grid, 6 off; 35 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 A1: 0.00843318 s
+wall cross0 A1: 0.00565426 s
 enumeration cross0 A1: blind 10 geometries (4 on the grid, 6 off; 35 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 A1 ==
   both accept: 1 polylines (3 geometries)
@@ -251,7 +211,7 @@ enumeration cross0 A1: blind 10 geometries (4 on the grid, 6 off; 35 more skippe
  too strict, by the kept values of the failing pairs:
  too loose, by domain break rules:
 
-wall cross0 B1+A1: 0.0303088 s
+wall cross0 B1+A1: 0.032328 s
 enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 more skipped, an absorbing piece had no length); by construction 16 geometries (0 of them the raster refuses and are not judged here: its turn rules)
 == cross0 B1+A1 ==
   both accept: 1 polylines (9 geometries)
@@ -273,21 +233,22 @@ enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 mor
 == total hand-named configurations ==
   both accept: 1 polylines (8 geometries)
   both reject: 1143 polylines (1296 geometries)
-  too strict: 73 polylines (114 geometries)
+  too strict: 4 polylines (7 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 209 polylines (219 geometries)
-  off interface: 33 polylines (64 geometries)
+  off interface: 102 polylines (171 geometries)
     other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-    off interface, varied: A1.2=0 A1.3=0 A1.4=10 A1.5=0 A1.6=4
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] B1[0x10] A1[2x18] D1[1x1,2x8]
-      port row broken: port E edge D1
+    off interface, varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] B1[0x12] A1[2x16] D1[1x1,2x8]
+      port row broken: port N edge C1
+      port row broken: port N edge B1
  too strict, by the kept values of the failing pairs:
   [box | port] polylines 4 (geometries 7)
     varied: A1.2=0 A1.3=0 A1.4=4 A1.5=0 A1.6=4
@@ -303,29 +264,6 @@ enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 mor
       program row broken: box
       program row broken: port E edge D1
       program row broken: port E gap D1
-  [grid] polylines 19 (geometries 31)
-    varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*16,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-  [grid | port] polylines 50 (geometries 76)
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*6,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=4 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
  too loose, by domain break rules:
 
 == total neighbourhood configurations ==
@@ -348,21 +286,22 @@ enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 mor
 == total ==
   both accept: 1 polylines (58 geometries)
   both reject: 1209 polylines (1393 geometries)
-  too strict: 73 polylines (114 geometries)
+  too strict: 4 polylines (7 geometries)
   too loose: 0 polylines (0 geometries)
   off grid (geometries): 0 (0 geometries)
   other shape: 236 polylines (260 geometries)
-  off interface: 33 polylines (64 geometries)
+  off interface: 102 polylines (171 geometries)
     other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
     other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
       polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-    off interface, varied: A1.2=0 A1.3=0 A1.4=10 A1.5=0 A1.6=4
-      polyline A1:2*18,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] B1[0x10] A1[2x18] D1[1x1,2x8]
-      port row broken: port E edge D1
+    off interface, varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+      contracted pieces (heading x length): AC1[2x4] BD1[0x2] C1[1x3,0x2] B1[0x12] A1[2x16] D1[1x1,2x8]
+      port row broken: port N edge C1
+      port row broken: port N edge B1
  too strict, by the kept values of the failing pairs:
   [box | port] polylines 4 (geometries 7)
     varied: A1.2=0 A1.3=0 A1.4=4 A1.5=0 A1.6=4
@@ -378,29 +317,6 @@ enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 mor
       program row broken: box
       program row broken: port E edge D1
       program row broken: port E gap D1
-  [grid] polylines 19 (geometries 31)
-    varied: B1.2=0 B1.3=0 B1.4=4 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=0 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*16,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: grid link
-  [grid | port] polylines 50 (geometries 76)
-    varied: B1.2=0 B1.3=0 B1.4=6 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*6,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=2 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*2,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
-    varied: B1.2=0 B1.3=0 B1.4=8 B1.5=4 B1.6=4
-      polyline A1:2*16,;AC1:2*4,;B1:0*8,7*4,0*8,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
-      program row broken: port N gap B1
-      program row broken: grid link
  too loose, by domain break rules:
 
 == base (strict rules on): failing pairs ==
