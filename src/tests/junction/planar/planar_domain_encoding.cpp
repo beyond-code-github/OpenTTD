@@ -6838,3 +6838,184 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		flush();
 	}
 }
+
+TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsstep2cdiag]")
+{
+	const char *hub_env = std::getenv("PLANAR_SLOTS_HUB");
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ofstream md(std::getenv("PLANAR_STEP2C_OUT") != nullptr ? std::getenv("PLANAR_STEP2C_OUT") : "slots-step2c.md", std::ios::app);
+	for (const std::string name : {"T1", "T2"}) {
+		if (hub_env != nullptr && name != hub_env) continue;
+		std::ostringstream out;
+		const auto flush = [&]() {
+			md << out.str() << std::flush;
+			std::cout << out.str() << std::flush;
+			out.str("");
+		};
+		std::string error, why;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!sr.variants.empty());
+		PlanarShapeVariant base;
+		REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+		PlanarShapeVariant v = base;
+		REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+		const std::string tag = std::format("STEP2C {}", name);
+		out << std::format("\n### {}\n\n", tag);
+
+		/* Stage A: no keep-apart rows, tidy on (D447). */
+		X1Fixture fa(v);
+		PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+		sa.node_gaps = false;
+		sa.keep_apart_out = true;
+		sa.only_pairs_on = true;
+		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+		out << std::format("- {} stage A (no keep-apart rows, tidy on): {} {} ms\n", tag, a.status, static_cast<int>(a.ms));
+		flush();
+		REQUIRE(a.status == "Optimal");
+
+		const auto &map = v.structure.map;
+		/* Per track, per piece: the length of stage A's drawing, and the piece's role in v. */
+		std::vector<std::vector<int>> len(fa.n);
+		std::vector<std::vector<std::string>> role(fa.n);
+		for (uint32_t t = 0; t < fa.n; t++) {
+			const PlanarShapeTrack &tr = v.tracks[t];
+			REQUIRE(a.points[t].size() == tr.pieces.size() + 1);
+			for (size_t k = 0; k < tr.pieces.size(); k++) {
+				const Point &p = a.points[t][k], &q = a.points[t][k + 1];
+				len[t].push_back(std::max(std::abs(q[0] - p[0]), std::abs(q[1] - p[1])));
+				const auto is_mid = [&](size_t m) { return std::ranges::find(tr.flex, static_cast<uint32_t>(m)) != tr.flex.end(); };
+				role[t].push_back(is_mid(k) ? "middle" : ((k > 0 && is_mid(k - 1)) || is_mid(k + 1)) ? "flank" : "fixed");
+			}
+		}
+		const auto desc = [&](uint32_t t, size_t k) { return std::format("{}[{} h{} {}]", k, role[t][k], v.tracks[t].pieces[k], len[t][k]); };
+		const auto heading_of = [&](uint32_t t, size_t k) { return ((v.tracks[t].pieces[k] % 8) + 8) % 8; };
+
+		/* 1. Per-track breaks. */
+		std::map<char, int> track_count;
+		out << "\nPer-track breaks:\n\n";
+		for (uint32_t t = 0; t < fa.n; t++) {
+			const PlanarShapeTrack &tr = v.tracks[t];
+			int prev = -1;
+			for (size_t j = 0; j < tr.pieces.size(); j++) {
+				if (len[t][j] == 0) continue;
+				if (prev >= 0) {
+					const int d = std::abs(heading_of(t, prev) - heading_of(t, j));
+					if (std::min(d, 8 - d) > 1) {
+						std::string zeros;
+						int flanks = 0;
+						bool fixed = false, crossing = false;
+						std::vector<size_t> flank_at;
+						for (size_t k = prev + 1; k < j; k++) {
+							zeros += std::format(" {}[h{} {}]", k, tr.pieces[k], role[t][k]);
+							if (role[t][k] == "flank") { flanks++; flank_at.push_back(k); }
+							if (role[t][k] == "fixed") fixed = true;
+						}
+						for (size_t k = prev; k <= j; k++) {
+							if (std::ranges::find(tr.event_piece, static_cast<uint32_t>(k)) != tr.event_piece.end()) crossing = true;
+						}
+						const auto is_mid = [&](size_t m) { return std::ranges::find(tr.flex, static_cast<uint32_t>(m)) != tr.flex.end(); };
+						char cls = 'C';
+						std::string note;
+						if (flanks == 1 && flank_at[0] > 0 && is_mid(flank_at[0] - 1) && is_mid(flank_at[0] + 1)) {
+							cls = 'A';
+						} else if (fixed) {
+							cls = 'B';
+						} else {
+							note = std::format(" ({} flank(s) in the run, none or not between two middles)", flanks);
+						}
+						track_count[cls]++;
+						out << std::format("- track {} (idx {}): i {} j {}; zero run:{}; crossing on i..j (event_piece): {}; class {}{}\n", map.tracks[t].name, t, desc(t, prev), desc(t, j), zeros.empty() ? " none" : zeros, crossing ? "yes" : "no", cls, note);
+					}
+				}
+				prev = static_cast<int>(j);
+			}
+		}
+		if (track_count.empty()) {
+			out << std::format("- {} STOP: no per-track break found\n", tag);
+			flush();
+			FAIL("no per-track break");
+		}
+
+		/* 2. Node breaks, on a contracted fixture with zero-length end pieces read through. */
+		Contracted ec;
+		ec.v = v;
+		ec.points.assign(fa.n, {});
+		for (uint32_t t = 0; t < fa.n; t++) {
+			size_t lo = 0, hi = len[t].size();
+			while (lo + 1 < hi && len[t][lo] == 0) lo++;
+			while (hi - 1 > lo && len[t][hi - 1] == 0) hi--;
+			PlanarShapeTrack &tr = ec.v.tracks[t];
+			tr.pieces.assign(v.tracks[t].pieces.begin() + lo, v.tracks[t].pieces.begin() + hi);
+			ec.points[t].assign(a.points[t].begin() + lo, a.points[t].begin() + hi + 1);
+		}
+		X1Fixture fe(ec.v);
+		std::vector<std::string> lines;
+		const bool node_ok = NodeTurnsHold(fe, ec, &lines);
+		out << std::format("\nNode breaks (ends read through): node turns {} ({} failing line(s))\n\n", node_ok ? "hold" : "FAIL", lines.size());
+		std::map<std::string, int> node_count;
+		for (const std::string &line : lines) {
+			out << "- " << line << "\n";
+			std::string rule = line.substr(line.find("rule ") + 5);
+			rule = rule.substr(0, rule.find(' '));
+			node_count["rule " + rule]++;
+			std::string legs = line.substr(line.find("legs: ") + 6);
+			size_t pos = 0;
+			while (pos <= legs.size()) {
+				size_t e = legs.find(" ; ", pos);
+				if (e == std::string::npos) e = legs.size();
+				const std::string leg = legs.substr(pos, e - pos);
+				pos = e + 3;
+				std::istringstream is(leg);
+				std::string lname, dir;
+				is >> lname >> dir;
+				const bool arriving = dir == "arriving";
+				uint32_t t = fa.n;
+				for (uint32_t k = 0; k < fa.n; k++) {
+					if (map.tracks[k].name == lname) { t = k; break; }
+				}
+				REQUIRE(t < fa.n);
+				const size_t n = v.tracks[t].pieces.size();
+				std::string between;
+				int nz = -1;
+				for (size_t s = 0; s < n; s++) {
+					const size_t k = arriving ? n - 1 - s : s;
+					if (len[t][k] != 0) { nz = static_cast<int>(k); break; }
+					between += std::format(" {}[h{} {}]", k, v.tracks[t].pieces[k], role[t][k]);
+				}
+				const size_t endk = arriving ? n - 1 : 0;
+				std::string cls;
+				if (nz < 0) {
+					cls = "N3 (leg all zero)";
+				} else if (role[t][nz] == "middle") {
+					cls = "N1";
+				} else if (role[t][nz] == "fixed") {
+					cls = "N2";
+				} else {
+					cls = "N3 (non-zero end piece is a flank)";
+				}
+				node_count[cls.substr(0, 2)]++;
+				out << std::format("  - leg {}: first non-zero {}; zeros to node:{}; Shape end piece {} h{}; class {}\n", leg, nz < 0 ? std::string("none") : desc(t, nz), between.empty() ? " none" : between, endk, v.tracks[t].pieces[endk], cls);
+			}
+		}
+		out << std::format("\nCounts {}: per-track", tag);
+		for (const auto &[c, k] : track_count) out << std::format(" {}={}", c, k);
+		out << "; node";
+		for (const auto &[c, k] : node_count) out << std::format(" [{}]={}", c, k);
+		out << "\n";
+		flush();
+	}
+}
