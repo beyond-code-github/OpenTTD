@@ -82,15 +82,16 @@ struct ProgramRaster {
  * The raster of a route program's pieces: moves F, L or R per piece against the previous one (turn +1 is the rasteriser's L), a deck from its near head to its far head is B<middle>, through RasterizeJunctionRoute, then checked tile by tile against the planned pieces.
  * @param ps The program's pieces.
  * @param name The route's name, for the reason.
+ * @param start The first piece's trackdir; none means the axis trackdir of its heading, which must be an axis piece.
  */
-ProgramRaster RasterOfProgram(const std::vector<PlanarProgramPiece> &ps, const std::string &name)
+ProgramRaster RasterOfProgram(const std::vector<PlanarProgramPiece> &ps, const std::string &name, std::optional<Trackdir> start = std::nullopt)
 {
 	ProgramRaster out;
-	if (ps.empty() || ps.front().heading % 2 != 0) {
+	if (ps.empty() || (!start.has_value() && ps.front().heading % 2 != 0)) {
 		out.why = fmt::format("route {} does not start on an axis piece", name);
 		return out;
 	}
-	JunctionRoute rp{{static_cast<int16_t>(ps[0].tile.x), static_cast<int16_t>(ps[0].tile.y)}, AxisTrackdir(ps.front().heading), {}};
+	JunctionRoute rp{{static_cast<int16_t>(ps[0].tile.x), static_cast<int16_t>(ps[0].tile.y)}, start.value_or(AxisTrackdir(ps.front().heading)), {}};
 	for (size_t i = 1; i < ps.size(); i++) {
 		if (ps[i].kind == PlanarPiece::Kind::Head) {
 			size_t far = i + 1;
@@ -118,6 +119,22 @@ ProgramRaster RasterOfProgram(const std::vector<PlanarProgramPiece> &ps, const s
 		}
 	}
 	return out;
+}
+
+/** The trackdir a domain piece is entered on: of the two trackdirs of its track, the one that leaves through the tile edge holding the piece's end point (x east = SW, y south = SE). */
+Trackdir StartTrackdirOf(const PlanarDomainPiece &piece)
+{
+	const int x = 2 * piece.tile.x, y = 2 * piece.tile.y;
+	DiagDirection exit = DiagDirection::NW;
+	if (piece.to[0] == x) {
+		exit = DiagDirection::NE;
+	} else if (piece.to[0] == x + 2) {
+		exit = DiagDirection::SW;
+	} else if (piece.to[1] == y + 2) {
+		exit = DiagDirection::SE;
+	}
+	const Trackdir forward = TrackToTrackdir(piece.track);
+	return TrackdirToExitdir(forward) == exit ? forward : ReverseTrackdir(forward);
 }
 
 }
@@ -351,14 +368,16 @@ PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
 		for (const std::vector<uint32_t> &path : route.paths) {
 			std::vector<PlanarProgramPiece> ps;
 			std::vector<size_t> end_of; // per path track, the piece count up to and including it
+			std::optional<Trackdir> start;
 			for (size_t k = 0; k < path.size(); k++) {
 				const std::vector<PlanarDomainPiece> &pieces = rasters[path[k]].pieces;
+				if (!start.has_value() && !pieces.empty()) start = StartTrackdirOf(pieces.front());
 				for (uint32_t i = 0; i < pieces.size(); i++) {
 					ps.push_back({pieces[i].tile, static_cast<uint8_t>(pieces[i].heading), kind_of(path[k], i), static_cast<uint8_t>(k)});
 				}
 				end_of.push_back(ps.size());
 			}
-			const ProgramRaster raster = RasterOfProgram(ps, route.name);
+			const ProgramRaster raster = RasterOfProgram(ps, route.name, start);
 			if (!raster.why.empty()) {
 				out.why = raster.why;
 				return out;

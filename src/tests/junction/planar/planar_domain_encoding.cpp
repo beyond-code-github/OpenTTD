@@ -3824,7 +3824,10 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 		while (port < hub.ports.size() && hub.ports[port].side != PlanarSide::N) port++;
 		REQUIRE(port < hub.ports.size());
 		const uint32_t t = hub.ports[port].tracks[0];
-		hub.tracks[t].points.back()[1] += 2;
+		INFO(HubTracksText(good));
+		std::vector<std::array<int, 2>> &points = hub.tracks[t].points;
+		const std::array<int, 2> end = points.back();
+		for (size_t i = points.size(); i-- > 0 && points[i] == end;) points[i][1] += 2; // the whole zero-length tail, so the track stays straight
 		const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
 		INFO(JoinLines(lines));
 		REQUIRE(lines.size() == 1);
@@ -7209,6 +7212,33 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		verdict += std::format("; domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
 		for (const std::string &rule : breaks) verdict += " [" + rule + "]";
 		out << "- " << tag << " " << verdict << "\n";
+		if (const char *rig_out = std::getenv("PLANAR_RIG_OUT"); rig_out != nullptr) {
+			/* The drawn hub of the final drawing, rendered for the back end (D452) and written for the rig. */
+			std::string hub_why;
+			std::vector<std::string> hub_notes;
+			const PlanarDrawnHub hub = PlanarDrawnHubOf(cv->v, jc.points, hub_notes, hub_why);
+			if (!hub_why.empty()) {
+				out << "rig: hub failed: " << hub_why << "\n";
+			} else {
+				const std::vector<std::string> contract = CheckPlanarDrawnHub(hub);
+				const PlanarRender render = RenderPlanarDrawnHub(hub);
+				if (!render.why.empty()) {
+					out << "rig: render failed: " << render.why << "\n";
+				} else {
+					JunctionLayout layout = render.layout;
+					std::string signal_why;
+					const std::vector<JunctionTrackSignal> placed = SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &signal_why);
+					std::ofstream json(rig_out);
+					if (!signal_why.empty()) layout = render.layout; // unsignalled when the signal pass fails
+					json << JunctionLayoutToJson(layout);
+					out << std::format("rig: {} size {}x{} tracks {} bridges {} signals {} contract {}{}\n", rig_out, layout.size.x, layout.size.y, hub.tracks.size(), layout.bridges.size(), layout.signals.size(),
+						contract.empty() ? "ok" : std::format("{} lines", contract.size()), signal_why.empty() ? "" : " (unsignalled: " + signal_why + ")");
+					out << std::format("rig: signal pass placed {} tokens\n", placed.size());
+					for (const std::string &line : contract) out << "rig: contract: " << line << "\n";
+				}
+			}
+			for (const std::string &note : hub_notes) out << "rig: note: " << note << "\n";
+		}
 		flush();
 	}
 }

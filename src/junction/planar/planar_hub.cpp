@@ -203,6 +203,7 @@ std::vector<std::string> CheckPlanarDrawnHub(const PlanarDrawnHub &hub)
 	/* The domain judge accepts. */
 	for (const PlanarDomainBreak &b : CheckPlanarDomain(PlanarDomainInputOfHub(hub)).breaks) {
 		if (b.rule == "grid" || b.rule == "turn") continue; // the rasterise promise already names that track
+		if (std::ranges::any_of(b.tracks, [&](uint32_t t) { return t < rasters.size() && !rasters[t].rule.empty(); })) continue; // ruling 6: so does a break on a track it reports
 		std::string names;
 		for (uint32_t t : b.tracks) names += (names.empty() ? "" : ",") + name(t);
 		lines.push_back(fmt::format("domain {} at {},{} ({}): {}", b.rule, b.tile.x, b.tile.y, names, b.why));
