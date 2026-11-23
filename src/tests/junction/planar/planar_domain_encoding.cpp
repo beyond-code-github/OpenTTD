@@ -34,6 +34,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -907,8 +908,11 @@ std::string RuleOf(const std::string &tag)
 	return it == RULE_NAMES.end() ? "other " + family : it->second;
 }
 
-/** F6 and F8: at every node, each leg's heading at the node and the trunk's differ by at most one eighth (the contracted turn rule, F3, through nodes; F6), and no two legs of the node share a heading (the node shape, D400; F8). */
-bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
+/**
+ * F6 and F8: at every node, each leg's heading at the node and the trunk's differ by at most one eighth (the contracted turn rule, F3, through nodes; F6), and no two legs of the node share a heading (the node shape, D400; F8).
+ * When why is not null, each failing node (the first rule it breaks) pushes one line instead of returning at once: "node N point (x,y) rule R trunk NAME arriving|starting hH|zero legs: NAME arriving|starting hH ..." (rule F8, F6 or beside; trunk zero: it took the zero-trunk recursion; the legs are those the rule names), and the function returns false if any line was pushed.
+ */
+bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv, std::vector<std::string> *why = nullptr)
 {
 	const auto &map = f.v.structure.map;
 	struct Site {
@@ -970,34 +974,52 @@ bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
 		if (m.starting.size() == 1 && m.ending.size() > 1 && m.starting[0] != t) return trunk_heading(other.index, m.starting[0], false, depth + 1);
 		return std::nullopt;
 	};
+	const auto track_name = [&](uint32_t t) { return map.tracks[t].name; };
+	bool all_hold = true;
 	for (uint32_t n = 0; n < map.expanded.nodes.size(); n++) {
 		const Site site = site_of(n);
 		if (site.ending.empty() || site.starting.empty()) continue;
 		const bool trunk_ends = site.ending.size() == 1 && site.starting.size() > 1;
 		const uint32_t trunk = trunk_ends ? site.ending[0] : site.starting[0];
-		/* F8: the legs' headings at the node are pairwise distinct (a zero leg is skipped). */
-		std::set<int> leg_headings;
-		for (const bool arriving : {true, false}) {
-			for (const uint32_t t : arriving ? site.ending : site.starting) {
-				if (t == trunk || zero(t)) continue;
-				const int h = heading(n, t, arriving);
-				if (h >= 0 && !leg_headings.insert(h).second) return false;
+		const auto leg_text = [&](uint32_t t, bool arriving) { return std::format("{} {} h{}", track_name(t), arriving ? "arriving" : "starting", heading(n, t, arriving)); };
+		const auto line_of = [&](const char *rule, const std::string &legs, std::optional<int> trunk_h) {
+			const std::string trunk_text = zero(trunk) ? std::format("{} {} zero", track_name(trunk), trunk_ends ? "arriving" : "starting") : leg_text(trunk, trunk_ends);
+			return std::format("node {} point ({},{}) rule {} trunk {}{} legs: {}", n, site.point[0], site.point[1], rule, trunk_text, zero(trunk) ? std::format(" (recursion heading {})", trunk_h ? std::format("{}", *trunk_h) : "none") : "", legs);
+		};
+		/* The first rule this node breaks, as its line; empty when it holds. */
+		const auto check = [&]() -> std::string {
+			/* F8: the legs' headings at the node are pairwise distinct (a zero leg is skipped). */
+			std::map<int, std::string> leg_headings;
+			for (const bool arriving : {true, false}) {
+				for (const uint32_t t : arriving ? site.ending : site.starting) {
+					if (t == trunk || zero(t)) continue;
+					const int h = heading(n, t, arriving);
+					if (h < 0) continue;
+					const auto [it, fresh] = leg_headings.emplace(h, leg_text(t, arriving));
+					if (!fresh) return line_of("F8", it->second + " ; " + leg_text(t, arriving), std::nullopt);
+				}
 			}
-		}
-		const std::optional<int> trunk_h = trunk_heading(n, trunk, trunk_ends, 0);
-		if (!trunk_h) continue;
-		if (*trunk_h < 0) return false;
-		for (const bool arriving : {true, false}) {
-			for (const uint32_t t : arriving ? site.ending : site.starting) {
-				if (t == trunk || zero(t)) continue;
-				const int h = heading(n, t, arriving);
-				if (h < 0) return false;
-				const int d = ((*trunk_h - h) % 8 + 8) % 8;
-				if (std::min(d, 8 - d) > 1) return false;
+			const std::optional<int> trunk_h = trunk_heading(n, trunk, trunk_ends, 0);
+			if (!trunk_h) return "";
+			if (*trunk_h < 0) return line_of("beside", leg_text(trunk, trunk_ends), trunk_h);
+			for (const bool arriving : {true, false}) {
+				for (const uint32_t t : arriving ? site.ending : site.starting) {
+					if (t == trunk || zero(t)) continue;
+					const int h = heading(n, t, arriving);
+					if (h < 0) return line_of("beside", leg_text(t, arriving), trunk_h);
+					const int d = ((*trunk_h - h) % 8 + 8) % 8;
+					if (std::min(d, 8 - d) > 1) return line_of("F6", leg_text(t, arriving), trunk_h);
+				}
 			}
-		}
+			return "";
+		};
+		const std::string line = check();
+		if (line.empty()) continue;
+		if (why == nullptr) return false;
+		why->push_back(line);
+		all_hold = false;
 	}
-	return true;
+	return all_hold;
 }
 
 /**
@@ -6499,4 +6521,141 @@ TEST_CASE("planar slots: stage A lazy loop under D446 on T1 and T2 (step 1)", "[
 		md << summary << std::flush;
 		std::cout << summary << std::flush;
 	}
+}
+
+/** Slots step 2a (diagnosis): where T2's contracted writing (D447 stage A, then the lazy-3 contraction) breaks the node turns F6/F8; the failing nodes with the pieces at them before and after contraction, and the listing solve of stage B. */
+TEST_CASE("planar slots: T2 contracted node turns (step 2a)", "[.][slotsstep2diag]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ostringstream out;
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+
+	/* Stage A (D447): no keep-apart rows, tidy on. */
+	const X1Fixture fa(v);
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.node_gaps = false;
+	sa.keep_apart_out = true;
+	sa.only_pairs_on = true;
+	const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+	out << std::format("## T2 offers 1 d443 off, stage A (no keep-apart rows, tidy on): status {} ms {}\n\n", a.status, static_cast<int>(a.ms));
+	REQUIRE(a.status == "Optimal");
+
+	/* The contraction, as the lazy test's stage B does it. */
+	PlanarShapeVariant vc = v;
+	auto points = a.points;
+	auto lengths = a.lengths;
+	for (size_t t = 0; t < vc.tracks.size(); t++) {
+		PlanarShapeTrack &track = vc.tracks[t];
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		std::vector<bool> kept;
+		for (const uint32_t m : middles) kept.push_back(a.lengths[t][m] >= 0.5);
+		for (size_t j = middles.size(); j-- > 0;) {
+			if (kept[j]) continue;
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+			points[t].erase(points[t].begin() + m, points[t].begin() + m + 2);
+			lengths[t][m - 1] += lengths[t][m] + lengths[t][m + 1];
+			lengths[t].erase(lengths[t].begin() + m, lengths[t].begin() + m + 2);
+		}
+		track.steps.clear();
+		uint32_t gone = 0;
+		for (size_t j = 0; j < middles.size(); j++) {
+			if (kept[j]) track.steps.push_back(middles[j] - 2 * gone);
+			else gone++;
+		}
+		track.flex.clear();
+	}
+	int biggest = 0;
+	for (const auto &track : points) {
+		for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+	}
+	PlanarShapeVariant plain = vc;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	Contracted a_cv;
+	a_cv.v = plain;
+	a_cv.points = points;
+	const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(points);
+	const std::vector<std::vector<double>> ref_along = AlongFrom(a_cv);
+	X1Fixture fb(plain);
+	std::vector<std::string> lines;
+	const bool node_ok = NodeTurnsHold(fb, a_cv, &lines);
+	out << std::format("node turns (F6/F8) on the contracted drawing: {}, {} failing line(s)\n\n", node_ok ? "hold" : "FAIL", lines.size());
+
+	const auto &map = v.structure.map;
+	std::map<std::string, uint32_t> by_name;
+	for (uint32_t t = 0; t < map.tracks.size(); t++) by_name[map.tracks[t].name] = t;
+	const auto pt = [](const Point &p) { return std::format("({},{})", p[0], p[1]); };
+	for (const std::string &line : lines) {
+		out << "### " << line << "\n\n";
+		/* Each track the line names, once: "NAME arriving|starting hH|zero". */
+		std::set<std::pair<uint32_t, bool>> seen;
+		static const std::regex token(R"((\S+) (arriving|starting) (h-?[0-9]+|zero))");
+		for (std::sregex_iterator it(line.begin(), line.end(), token), end; it != end; ++it) {
+			const auto found = by_name.find((*it)[1].str());
+			REQUIRE(found != by_name.end());
+			const uint32_t t = found->second;
+			const bool arriving = (*it)[2].str() == "arriving";
+			if (!seen.insert({t, arriving}).second) continue;
+			const auto first4 = [&](size_t n) { return arriving ? (n > 4 ? n - 4 : 0) : 0; };
+			const auto last4 = [&](size_t n) { return arriving ? n : std::min<size_t>(n, 4); };
+			out << std::format("track {} ({}), point at node in stage A {}\n", map.tracks[t].name, arriving ? "arriving: last 4 pieces" : "starting: first 4 pieces", pt(arriving ? a.points[t].back() : a.points[t].front()));
+			out << "- uncontracted v (piece: heading, stage A length, kind):";
+			const std::vector<uint32_t> &flex = v.tracks[t].flex;
+			for (size_t p = first4(v.tracks[t].pieces.size()); p < last4(v.tracks[t].pieces.size()); p++) {
+				std::string kind = "fixed";
+				for (const uint32_t m : flex) {
+					if (p == m || p == m + 1) kind = "flex middle";
+					else if (p + 1 == m || p == m + 2) kind = "flex flank";
+				}
+				out << std::format(" [{}: h{} len {} {}]", p, v.tracks[t].pieces[p], a.lengths[t][p], kind);
+			}
+			out << "\n- contracted plain (piece: heading, length):";
+			for (size_t p = first4(plain.tracks[t].pieces.size()); p < last4(plain.tracks[t].pieces.size()); p++) out << std::format(" [{}: h{} len {}]", p, plain.tracks[t].pieces[p], lengths[t][p]);
+			out << "\n\n";
+		}
+	}
+
+	/* Stage B's listing solve, as the lazy test does it. */
+	PlanarDrawOptions sb = SlotsOptions(fb, DEFAULT_RULES);
+	sb.port_zero_from = &ref_port_zero;
+	sb.node_gap_from = &ref_port_zero;
+	sb.along_from = &ref_along;
+	sb.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+	PlanarDrawOptions listing = sb;
+	listing.keep_apart_out = true;
+	listing.only_pairs_on = true;
+	const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
+	out << std::format("## stage B listing solve (no keep-apart rows): status {} ms {}\n", lr.status, static_cast<int>(lr.ms));
+	if (lr.status == "Infeasible") {
+		out << "conflict:";
+		for (size_t i = 0; i < lr.conflict.size() && i < 40; i++) out << " [" << lr.conflict[i] << "]";
+		out << std::format(" ({} tags in all)\n", lr.conflict.size());
+	}
+	std::ofstream md(std::getenv("PLANAR_STEP2A_OUT") != nullptr ? std::getenv("PLANAR_STEP2A_OUT") : "slots-step2a.md", std::ios::app);
+	md << out.str() << std::flush;
+	std::cout << out.str() << std::flush;
 }
