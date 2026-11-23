@@ -1619,6 +1619,21 @@ std::string SidesText(const std::string &name, const SideStats &st)
 	return o.str();
 }
 
+/** cells-2 measurement: the cells decide each keep-apart pair's side. Per class: counts and failures (a negative margin of the decided candidate). */
+struct Cells2 {
+	size_t drawings = 0, refused = 0;
+	size_t pairs = 0, same = 0, diff = 0, undecided = 0;
+	size_t und_wall = 0, und_nosep = 0, und_ambiguous = 0; ///< Undecided: a wall not in the face's cells, no single separating dummy (a landing wall is in both sides), a wall key twice in the face.
+	size_t same_two = 0; ///< Same-cell pairs whose two inward candidates differ.
+	size_t same_fail_i = 0, same_fail_j = 0, same_fail_both = 0; ///< Margin of i's inward candidate / j's inward candidate negative; both negative.
+	size_t diff_fail = 0, diff_fail_all = 0, diff_multi = 0, diff_coincide = 0; ///< First separating dummy's margin negative; every separating dummy's negative; pairs with several separating dummies; candidate coincides with an existing one.
+	size_t diff_fail_new = 0, diff_new = 0; ///< Of the pairs whose dummy direction is no existing candidate: count and failures.
+	size_t sides4 = 0, both_decided = 0, cells_only = 0, sides4_only = 0, neither = 0; ///< Coverage: sides-4 (walk_strict or facing forces) versus cells.
+	size_t agree = 0, disagree = 0, agree_i = 0, agree_j = 0; ///< Pairs both force: the cell's candidate equals the forced one (same cell: either inward); of the agreeing same-cell ones, equal to i's / j's.
+	size_t forced_same = 0, forced_diff = 0, disagree_same = 0, disagree_diff = 0;
+	std::vector<std::string> first_same, first_diff, first_disagree;
+};
+
 /** cells-1 measurement (D385 revisited over contracted lines): per fixture, the convex cells RefinePlanarShapeCells makes on a drawing's contracted variant and the cell rows judged on the drawing's points. */
 struct CellStats {
 	size_t drawings = 0, legal = 0, illegal = 0, off_interface = 0;
@@ -1641,6 +1656,7 @@ struct CellStats {
 	size_t loose = 0, loose_pairwise_too = 0, loose_off_grid = 0; ///< Illegal drawings the cell program accepts; of them those the pairwise judge also accepts; of them off the grid.
 	std::map<std::string, size_t> loose_by_rule; ///< By the domain rule that refuses (once per drawing).
 	double ms = 0;
+	Cells2 c2;
 };
 CellStats *g_cells_stats = nullptr;
 std::string g_cells_name;
@@ -1665,6 +1681,253 @@ std::string CellWallText(const PlanarShapeVariant &v, const PlanarCellWall &w)
 		return std::format("dummy {} (from {} bend after p{}, heading {}, lands on {}) walked h{}", w.piece, map.tracks[d.track].name, d.piece, d.heading, land, w.heading);
 	}
 	return std::format("{} p{} h{}", map.tracks[w.track].name, w.piece, w.heading);
+}
+
+/** cells-2: per keep-apart pair of a legal drawing, whether the convex cells decide its side and whether the decided candidate holds. */
+void CellsSidesAccumulate(Cells2 &c2, const X1Fixture &f, const std::string &pkey, const Contracted &cv, const std::vector<PlanarKeepApartPair> &pairs)
+{
+	c2.drawings++;
+	PlanarShapeVariant vc = cv.v;
+	std::string why;
+	if (!RefinePlanarShapeCells(vc, why)) {
+		c2.refused++;
+		return;
+	}
+	const std::vector<std::vector<PlanarCellWall>> cells = PlanarShapeCellWalls(vc);
+	const std::vector<uint32_t> cell_faces = PlanarShapeCellFaces(vc);
+	const std::vector<PlanarFaceWalls> face_walls = PlanarShapeFaceWalls(vc);
+	std::map<uint32_t, const PlanarFaceWalls *> face_of;
+	for (const PlanarFaceWalls &fw : face_walls) face_of[fw.face] = &fw;
+	/* The cell tree: per dummy, the two cells that carry it as a wall. */
+	std::vector<std::vector<size_t>> dummy_cells(vc.dummies.size());
+	for (size_t c = 0; c < cells.size(); c++) {
+		for (const PlanarCellWall &w : cells[c]) {
+			if (w.track == PLANAR_DUMMY_TRACK && w.piece < dummy_cells.size()) dummy_cells[w.piece].push_back(c);
+		}
+	}
+	const auto &pts = cv.points;
+	/* A candidate's index for "from wall a along s" (a = 0 wall i, 1 wall j): the candidate with that direction and from-wall, or the equivalent (from the other wall along -s); -1 when none. */
+	const auto find_candidate = [&](const PlanarKeepApartPair &pair, int a, const std::array<int, 2> &s) {
+		for (int c = 0; c < 4; c++) {
+			const PlanarKeepApartPair::Candidate &cand = pair.candidates[c];
+			const int from = c & 1;
+			if (from == a && cand.s == s) return c;
+			if (from != a && cand.s == std::array<int, 2>{-s[0], -s[1]}) return c;
+		}
+		return -1;
+	};
+	/* The margin of direction s from wall a: an existing candidate's own, else the rows of the from-a candidate (axis 0) at the larger of the two axes' spacings. */
+	const auto margin_of = [&](const PlanarKeepApartPair &pair, int a, const std::array<int, 2> &s, int &cand_out, int &spacing_out) {
+		cand_out = find_candidate(pair, a, s);
+		if (cand_out >= 0) {
+			spacing_out = pair.candidates[cand_out].spacing;
+			return CandidateMargin(pair.candidates[cand_out], pts);
+		}
+		spacing_out = std::max(pair.candidates[0].spacing, pair.candidates[2].spacing);
+		int m = INT_MAX;
+		for (const PlanarKeepApartPair::Row &r : pair.candidates[a == 0 ? 0 : 1].rows) {
+			const std::array<int, 2> p = PlanarKeepApartEnd(r, false, pts), q = PlanarKeepApartEnd(r, true, pts);
+			m = std::min(m, s[0] * (q[0] - p[0]) + s[1] * (q[1] - p[1]) - spacing_out);
+		}
+		return m;
+	};
+	const auto wall_text = [&](const PlanarCellWall &w) { return CellWallText(vc, w); };
+	for (const PlanarKeepApartPair &pair : pairs) {
+		if (!pair.skipped.empty() || pair.candidates.empty()) continue;
+		REQUIRE(pair.candidates.size() == 4);
+		c2.pairs++;
+		uint32_t face = 0;
+		size_t wi = 0, wj = 0;
+		{
+			std::istringstream tag_in(pair.tag.substr(4));
+			tag_in >> face >> wi >> wj;
+			REQUIRE(!tag_in.fail());
+		}
+		const int forced = pair.walk_strict >= 0 ? pair.walk_strict : pair.facing;
+		if (forced >= 0) c2.sides4++;
+		bool decided = false, agree_known = false, agrees = false, agrees_i = false, is_same = false;
+		const auto finish = [&]() {
+			if (decided) {
+				(forced >= 0 ? c2.both_decided : c2.cells_only)++;
+				if (forced >= 0) {
+					(is_same ? c2.forced_same : c2.forced_diff)++;
+					if (agrees) {
+						c2.agree++;
+						if (is_same) (agrees_i ? c2.agree_i : c2.agree_j)++;
+					} else {
+						c2.disagree++;
+						(is_same ? c2.disagree_same : c2.disagree_diff)++;
+						if (c2.first_disagree.size() < 5) c2.first_disagree.push_back(std::format("{} | {} | {} | forced candidate {}", pair.tag, pkey, is_same ? "same cell" : "different cells", forced));
+					}
+				}
+			} else {
+				c2.undecided++;
+				(forced >= 0 ? c2.sides4_only : c2.neither)++;
+			}
+			(void)agree_known;
+		};
+		const auto fit = face_of.find(face);
+		if (fit == face_of.end() || wi >= fit->second->walls.size() || wj >= fit->second->walls.size()) {
+			c2.und_wall++;
+			finish();
+			continue;
+		}
+		const std::vector<PlanarCellWall> &fw = fit->second->walls;
+		const auto same_wall = [](const PlanarCellWall &a, const PlanarCellWall &b) { return a.track == b.track && a.piece == b.piece && a.heading == b.heading; };
+		size_t keys_i = 0, keys_j = 0;
+		for (const PlanarCellWall &w : fw) {
+			keys_i += same_wall(w, fw[wi]) ? 1 : 0;
+			keys_j += same_wall(w, fw[wj]) ? 1 : 0;
+		}
+		if (keys_i != 1 || keys_j != 1) {
+			c2.und_ambiguous++;
+			finish();
+			continue;
+		}
+		std::vector<size_t> face_cells, ci, cj;
+		for (size_t c = 0; c < cells.size(); c++) {
+			if (cell_faces[c] != face) continue;
+			face_cells.push_back(c);
+			for (const PlanarCellWall &w : cells[c]) {
+				if (same_wall(w, fw[wi]) && std::ranges::find(ci, c) == ci.end()) ci.push_back(c);
+				if (same_wall(w, fw[wj]) && std::ranges::find(cj, c) == cj.end()) cj.push_back(c);
+			}
+		}
+		if (ci.empty() || cj.empty()) {
+			c2.und_wall++;
+			finish();
+			continue;
+		}
+		const int hi = fw[wi].heading, hj = fw[wj].heading;
+		const std::string walls_text = std::format("walls {} / {} (heading {} / {})", wall_text(fw[wi]), wall_text(fw[wj]), hi, hj);
+		const bool common = std::ranges::any_of(ci, [&](size_t c) { return std::ranges::find(cj, c) != cj.end(); });
+		if (common) {
+			c2.same++;
+			decided = true;
+			is_same = true;
+			const std::array<int, 2> si = {STEPS[(hi + 6) % 8][0], STEPS[(hi + 6) % 8][1]}, sj = {STEPS[(hj + 6) % 8][0], STEPS[(hj + 6) % 8][1]};
+			int cand_i = 0, cand_j = 0, spacing = 0;
+			const int mi = margin_of(pair, 0, si, cand_i, spacing);
+			const int mj = margin_of(pair, 1, sj, cand_j, spacing);
+			REQUIRE(cand_i >= 0);
+			REQUIRE(cand_j >= 0);
+			if (cand_i != cand_j) c2.same_two++;
+			const bool fi = mi < 0, fj = mj < 0;
+			if (fi) c2.same_fail_i++;
+			if (fj) c2.same_fail_j++;
+			if (fi && fj) {
+				c2.same_fail_both++;
+				if (c2.first_same.size() < 5) c2.first_same.push_back(std::format("{} | {} | {} | i-inward c{} margin {}, j-inward c{} margin {}", pair.tag, pkey, walls_text, cand_i, mi, cand_j, mj));
+			}
+			agrees = forced >= 0 && (forced == cand_i || forced == cand_j);
+			agrees_i = forced == cand_i;
+			finish();
+			continue;
+		}
+		/* Different cells: the dummies whose removal from the cell tree puts every cell of wall i on one side and every cell of wall j on the other. */
+		std::map<size_t, int> dist;
+		{
+			std::vector<size_t> queue = ci;
+			for (const size_t c : ci) dist[c] = 0;
+			for (size_t head = 0; head < queue.size(); head++) {
+				const size_t c = queue[head];
+				for (const PlanarCellWall &w : cells[c]) {
+					if (w.track != PLANAR_DUMMY_TRACK) continue;
+					for (const size_t o : dummy_cells[w.piece]) {
+						if (o != c && !dist.contains(o)) {
+							dist[o] = dist[c] + 1;
+							queue.push_back(o);
+						}
+					}
+				}
+			}
+		}
+		struct Sep {
+			size_t dummy;
+			size_t side_cell; ///< The dummy's cell on wall i's side.
+			int near;
+		};
+		std::vector<Sep> seps;
+		for (size_t d = 0; d < vc.dummies.size(); d++) {
+			if (vc.dummies[d].face != face || dummy_cells[d].size() != 2) continue;
+			/* Component of a cell with the edge d removed: flood from it. */
+			const auto component = [&](size_t start) {
+				std::set<size_t> seen = {start};
+				std::vector<size_t> queue = {start};
+				for (size_t head = 0; head < queue.size(); head++) {
+					for (const PlanarCellWall &w : cells[queue[head]]) {
+						if (w.track != PLANAR_DUMMY_TRACK || w.piece == d) continue;
+						for (const size_t o : dummy_cells[w.piece]) {
+							if (seen.insert(o).second) queue.push_back(o);
+						}
+					}
+				}
+				return seen;
+			};
+			const std::set<size_t> a = component(dummy_cells[d][0]);
+			const bool i_all_a = std::ranges::all_of(ci, [&](size_t c) { return a.contains(c); }), i_none_a = std::ranges::none_of(ci, [&](size_t c) { return a.contains(c); });
+			const bool j_all_a = std::ranges::all_of(cj, [&](size_t c) { return a.contains(c); }), j_none_a = std::ranges::none_of(cj, [&](size_t c) { return a.contains(c); });
+			if (!((i_all_a && j_none_a) || (i_none_a && j_all_a))) continue;
+			const size_t side = i_all_a ? dummy_cells[d][0] : dummy_cells[d][1];
+			seps.push_back({d, side, std::min(dist.contains(dummy_cells[d][0]) ? dist[dummy_cells[d][0]] : INT_MAX, dist.contains(dummy_cells[d][1]) ? dist[dummy_cells[d][1]] : INT_MAX)});
+		}
+		if (seps.empty()) {
+			c2.und_nosep++;
+			finish();
+			continue;
+		}
+		std::ranges::stable_sort(seps, [](const Sep &x, const Sep &y) { return x.near < y.near; });
+		c2.diff++;
+		decided = true;
+		if (seps.size() > 1) c2.diff_multi++;
+		bool all_fail = true;
+		int first_margin = 0, first_cand = -1, first_spacing = 0;
+		std::array<int, 2> first_s{};
+		for (size_t k = 0; k < seps.size(); k++) {
+			int h = -1;
+			for (const PlanarCellWall &w : cells[seps[k].side_cell]) {
+				if (w.track == PLANAR_DUMMY_TRACK && w.piece == seps[k].dummy) h = w.heading;
+			}
+			REQUIRE(h >= 0);
+			const std::array<int, 2> s = {STEPS[(h + 2) % 8][0], STEPS[(h + 2) % 8][1]};
+			int cand = -1, spacing = 0;
+			const int m = margin_of(pair, 0, s, cand, spacing);
+			all_fail = all_fail && m < 0;
+			if (k == 0) {
+				first_margin = m;
+				first_cand = cand;
+				first_spacing = spacing;
+				first_s = s;
+			}
+		}
+		if (first_cand >= 0) c2.diff_coincide++;
+		else c2.diff_new++;
+		if (all_fail) c2.diff_fail_all++;
+		if (first_margin < 0) {
+			c2.diff_fail++;
+			if (first_cand < 0) c2.diff_fail_new++;
+			if (c2.first_diff.size() < 5) c2.first_diff.push_back(std::format("{} | {} | {} | dummy {} ({}) s({},{}) spacing {} margin {} {}", pair.tag, pkey, walls_text, seps[0].dummy, wall_text({PLANAR_DUMMY_TRACK, static_cast<uint32_t>(seps[0].dummy), 0}), first_s[0], first_s[1], first_spacing, first_margin, first_cand >= 0 ? std::format("(= candidate {})", first_cand) : "(no existing candidate)"));
+		}
+		agrees = forced >= 0 && first_cand == forced;
+		agrees_i = true;
+		finish();
+	}
+	(void)f;
+}
+
+/** cells-2 stats as a report line block. */
+std::string Cells2Text(const std::string &name, const Cells2 &c)
+{
+	std::ostringstream o;
+	o << std::format("cells-2 {}: drawings {} (refinement refused {}) pairs {} same {} diff {} undecided {} (wall {}, no separating dummy {}, ambiguous {})\n", name, c.drawings, c.refused, c.pairs, c.same, c.diff, c.undecided, c.und_wall, c.und_nosep, c.und_ambiguous);
+	o << std::format("  same-cell: two distinct inward candidates {}; i-inward fails {}, j-inward fails {}, neither holds {}\n", c.same_two, c.same_fail_i, c.same_fail_j, c.same_fail_both);
+	o << std::format("  different-cell: several separating dummies {}; coincides with an existing candidate {}, new direction {} (fails {}); first dummy fails {}; every separating dummy fails {}\n", c.diff_multi, c.diff_coincide, c.diff_new, c.diff_fail_new, c.diff_fail, c.diff_fail_all);
+	o << std::format("  coverage: sides-4 forces {} ({:.1f}%); cells decide {} ({:.1f}%); both {}, cells only {}, sides-4 only {}, neither {}\n", c.sides4, c.pairs == 0 ? 0.0 : 100.0 * static_cast<double>(c.sides4) / static_cast<double>(c.pairs), c.same + c.diff, c.pairs == 0 ? 0.0 : 100.0 * static_cast<double>(c.same + c.diff) / static_cast<double>(c.pairs), c.both_decided, c.cells_only, c.sides4_only, c.neither);
+	o << std::format("  agreement (forced and decided {}): agree {} (same-cell {} of which i-inward {}, j-inward {}), disagree {} (same-cell {}, different-cell {})\n", c.both_decided, c.agree, c.forced_same - c.disagree_same, c.agree_i, c.agree_j, c.disagree, c.disagree_same, c.disagree_diff);
+	for (const std::string &l : c.first_same) o << "  first same-cell failure: " << l << "\n";
+	for (const std::string &l : c.first_diff) o << "  first different-cell failure: " << l << "\n";
+	for (const std::string &l : c.first_disagree) o << "  first disagreement: " << l << "\n";
+	return o.str();
 }
 
 /** Judge the cell program on one drawing's contracted variant. `legal` is the domain's verdict of the drawing, `off_interface` that the judge for it leaves out the port and box rows. */
@@ -1972,6 +2235,7 @@ std::string CellsText(const std::string &name, const CellStats &st)
 	o << std::format("  illegal drawings every other rule accepts (only a keep-apart rule can refuse them): {}; the cell program refuses {}\n", st.keep_only, st.keep_only_refused);
 	o << std::format("  illegal drawings refused by the cell program {} (families:{}); too loose {} (also accepted by the pairwise judge {}, off grid {}); by domain rule:{}\n", st.refuse_illegal, map_text(st.refuse_illegal_by_family), st.loose, st.loose_pairwise_too, st.loose_off_grid, map_text(st.loose_by_rule));
 	for (const std::string &t : st.strict_first) o << "  first too strict: " << t;
+	o << Cells2Text(name, st.c2);
 	return o.str();
 }
 
@@ -2099,6 +2363,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 							g_sides_stats->off_interface++;
 							SidesAccumulate(*g_sides_stats, f, pkey, g_last_readouts.keep.keep_apart, cv->points);
 						}
+						if (g_cells_stats != nullptr) CellsSidesAccumulate(g_cells_stats->c2, f, pkey, *cv, g_last_readouts.keep.keep_apart);
 					} else if (d.legal) {
 						nc.c = accept ? BOTH_ACCEPT : STRICT;
 					} else {
@@ -2106,6 +2371,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						nc.c = accept ? LOOSE : judge(f, *cv, false).accept ? LOOSE_OFF : BOTH_REJECT;
 					}
 					if (nc.c == BOTH_ACCEPT && g_sides_stats != nullptr) SidesAccumulate(*g_sides_stats, f, pkey, ro.keep.keep_apart, cv->points);
+					if (nc.c == BOTH_ACCEPT && g_cells_stats != nullptr) CellsSidesAccumulate(g_cells_stats->c2, f, pkey, *cv, ro.keep.keep_apart);
 					if (g_cells_stats != nullptr) CellsAccumulate(*g_cells_stats, f, pkey, *cv, d, nc.c == OFF_INTERFACE, accept, on_grid);
 					if (nc.c == STRICT) {
 						/* A too-strict polyline is on the grid by definition. */
@@ -4704,6 +4970,7 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 		CellStats st;
 		g_cells_name = "197";
 		CellsAccumulate(st, f, "V's 197", *cv, domain, false, full.accept, true);
+		CellsSidesAccumulate(st.c2, f, "V's 197", *cv, ro.keep.keep_apart);
 		std::ofstream(cells_env) << std::format("domain legal {} judge accepts {}\n", domain.legal, full.accept) << CellsText("197", st);
 	}
 	struct Refusal {
