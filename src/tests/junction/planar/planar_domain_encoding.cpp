@@ -5911,9 +5911,12 @@ int LazyBestCandidate(const PlanarKeepApartPair &p, const std::vector<std::vecto
 
 /**
  * D444 lazy-4: rounds as lazy-1, but a pair that fails on a round's points is added with its candidate FIXED to the one with the largest margin on those points (one plain row, no binary); a round with fixed pairs that is Infeasible frees the fixed pairs its conflict names (binaries, as lazy-1) and solves again. `list` seeds the free pairs.
+ * D446 (slots step 1): with `fix_sides == false` a round's failing pairs join `free_list` (side binaries) and no pair is ever fixed, so the Infeasible branch never frees any. With `tight_bound == true` every round after the first Optimal round sets coord_max to max(64, (2 * biggest + 15) / 16 * 16) over the last Optimal points; a tight round that is not Optimal is solved once more with coord_max doubled (both rows written, the second as stage "<stage>+", both counted).
  */
-LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage, std::ostream &md)
+LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage_name, std::ostream &md, bool fix_sides = true, bool tight_bound = false)
 {
+	std::string stage_text = stage_name;
+	const char *stage = stage_text.c_str();
 	LazyRun run;
 	std::vector<std::string> free_list = std::move(list);
 	std::vector<std::pair<std::string, int>> fixed;
@@ -5928,9 +5931,32 @@ LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std
 		o.only_pairs_on = true;
 		o.only_pairs = free_list;
 		o.fixed_pairs = fixed;
-		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
+		stage_text = stage_name;
+		stage = stage_text.c_str();
+		PlanarDrawResult r;
+		bool tight_round = false;
+		if (tight_bound && run.last.status == "Optimal") {
+			int biggest = 0;
+			for (const auto &track : run.last.points) {
+				for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+			}
+			o.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+			tight_round = true;
+		}
+		r = CheckPlanarDrawable(v, 15.0, o);
 		run.rounds++;
 		run.ms += r.ms;
+		if (tight_round && r.status != "Optimal") {
+			const std::string row = std::format("| {} | {} | {} | {} | {} | {} | {} | - | - |", stage, round, r.status, static_cast<int>(r.ms), fixed.size(), free_list.size(), r.binaries);
+			md << row << "\n" << std::flush;
+			std::cout << LazyRoundTag(tag, stage, round) << ": " << row << "\n" << std::flush;
+			stage_text = std::string(stage_name) + "+";
+			stage = stage_text.c_str();
+			o.coord_max *= 2;
+			r = CheckPlanarDrawable(v, 15.0, o);
+			run.rounds++;
+			run.ms += r.ms;
+		}
 		const size_t n_fixed = fixed.size(), n_free = free_list.size();
 		size_t all = 0;
 		std::vector<const PlanarKeepApartPair *> failing;
@@ -5980,7 +6006,10 @@ LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std
 			run.list = all_with_rows();
 			return run;
 		}
-		for (const PlanarKeepApartPair *p : failing) fixed.emplace_back(p->tag, LazyBestCandidate(*p, r.points));
+		for (const PlanarKeepApartPair *p : failing) {
+			if (fix_sides) fixed.emplace_back(p->tag, LazyBestCandidate(*p, r.points));
+			else free_list.push_back(p->tag);
+		}
 	}
 	run.stop = "12 rounds";
 	run.list = all_with_rows();
@@ -6378,5 +6407,76 @@ TEST_CASE("planar slots: T2 stage A round 1 cheap checks (step 0)", "[.][slotsst
 		const std::string row = std::format("| R{} | {} | {} | {} | {} | {} | {} |\n", run, names[run], r.status, static_cast<int>(r.ms), r.binaries, run == 4 ? std::format("{}", r.start_values) : "-", fail);
 		md << row << std::flush;
 		std::cout << row << std::flush;
+	}
+}
+
+/** Slots step 1: stage A's lazy loop under D446 (free side binaries, tight bound, feasibility objective) on T1 and T2, then a 3 s length polish from its last drawing. */
+TEST_CASE("planar slots: stage A lazy loop under D446 on T1 and T2 (step 1)", "[.][slotsstep1]")
+{
+	const char *hub_env = std::getenv("PLANAR_SLOTS_HUB");
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ofstream md(std::getenv("PLANAR_STEP1_OUT") != nullptr ? std::getenv("PLANAR_STEP1_OUT") : "slots-step1.md", std::ios::app);
+	for (const std::string name : {"T1", "T2"}) {
+		if (hub_env != nullptr && name != hub_env) continue;
+		std::string error, why;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!sr.variants.empty());
+		PlanarShapeVariant base;
+		REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+		PlanarShapeVariant v = base;
+		REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+		const X1Fixture fa(v);
+		PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+		sa.node_gaps = false;
+		sa.tidy = false;
+		const std::string tag = std::format("STEP1 {}", name);
+		md << std::format("\n### {}\n\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n", tag) << std::flush;
+		const LazyRun a = LazyLoop(v, sa, {}, tag, "A", md, false, true);
+		std::string summary = std::format("\n- {} stage A: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, a.rounds, a.converged, a.stop, a.list.size(), a.all_pairs, static_cast<int>(a.ms));
+		if (a.converged) {
+			int biggest = 0;
+			for (const auto &track : a.last.points) {
+				for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+			}
+			PlanarDrawOptions sp = sa;
+			sp.tidy = true;
+			sp.keep_apart_out = true;
+			sp.only_pairs_on = true;
+			sp.only_pairs = a.list;
+			sp.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+			sp.start_points = &a.last.points;
+			const PlanarDrawResult pr = CheckPlanarDrawable(v, 3.0, sp);
+			const auto total = [](const std::vector<std::vector<double>> &l) {
+				double sum = 0;
+				for (const auto &t : l) {
+					for (const double x : t) sum += x;
+				}
+				return sum;
+			};
+			size_t fail = 0;
+			if (pr.status == "Optimal") {
+				for (const PlanarKeepApartPair &p : pr.keep_apart) {
+					if (!p.skipped.empty() || p.candidates.empty()) continue;
+					if (std::ranges::find(a.list, p.tag) == a.list.end() && !PlanarKeepApartHolds(p, pr.points)) fail++;
+				}
+			}
+			summary += std::format("- {} polish: {} {} ms start_values {} length before {} after {} failing without rows {}\n", tag, pr.status, static_cast<int>(pr.ms), pr.start_values, total(a.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-", pr.status == "Optimal" ? std::format("{}", fail) : "-");
+		}
+		md << summary << std::flush;
+		std::cout << summary << std::flush;
 	}
 }
