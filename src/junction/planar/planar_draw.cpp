@@ -1170,6 +1170,17 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			for (int axis = 0; axis < 2; axis++) row({{p[axis], 1}, {shift[axis], -1}}, pin.at[axis] - options.pins->window, pin.at[axis] + options.pins->window, tag);
 		}
 	}
+	/* A crossing of two tunnel separators, each listing it (D390 (2)): at a different level from the other crossings of those tracks. */
+	const auto tunnel_by_tunnel = [&](uint32_t c) {
+		for (const uint32_t track : {map.crossings[c].a, map.crossings[c].b}) {
+			bool found = false;
+			for (const PlanarStructure &st : v.structure.structures) {
+				if (st.separator == track && st.kinds == 2 && std::ranges::find(st.crossings, c) != st.crossings.end()) found = true;
+			}
+			if (!found) return false;
+		}
+		return true;
+	};
 	/* Crossings on one piece of one track keep their event order. */
 	for (size_t t = 0; t < nt; t++) {
 		for (size_t k = 0; k + 1 < map.events[t].size(); k++) {
@@ -1178,6 +1189,8 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			const int s0 = map.crossings[c0].a == t ? 0 : 1;
 			const int s1 = map.crossings[c1].a == t ? 0 : 1;
 			if (piece_of[c0][s0] != piece_of[c1][s1]) continue;
+			/* D440: crossings at different levels (a tunnel by a tunnel, D390) are neither spaced nor ordered against each other. */
+			if (tunnel_by_tunnel(c0) != tunnel_by_tunnel(c1)) continue;
 			row({{param[c1][s1], 1}, {param[c0][s0], -1}}, 0, JunctionMilp::INF, fmt::format("order {} {}", map.tracks[t].name, piece_of[c0][s0]));
 		}
 	}
@@ -1275,7 +1288,13 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			most_limit = std::max(most_limit, structure.limit[kind]);
 		}
 		/* Parallel crossers keep the deck gap; an axis and a diagonal crosser may be one half tile apart (D415). */
-		for (size_t k = 0; k + 1 < u.size(); k++) row({{u[k + 1], 1}, {u[k], -1}}, crosser_heading[k] % 4 == crosser_heading[k + 1] % 4 ? rules.deck_gap : 1, JunctionMilp::INF, fmt::format("deck {}", s));
+		/* D440: crossings at different levels (a tunnel by a tunnel, D390) are neither spaced nor ordered against each other. */
+		std::array<size_t, 2> last_of_level = {SIZE_MAX, SIZE_MAX};
+		for (size_t k = 0; k < u.size(); k++) {
+			size_t &last = last_of_level[tunnel_by_tunnel(structure.crossings[k]) ? 1 : 0];
+			if (last != SIZE_MAX) row({{u[k], 1}, {u[last], -1}}, crosser_heading[last] % 4 == crosser_heading[k] % 4 ? rules.deck_gap : 1, JunctionMilp::INF, fmt::format("deck {}", s));
+			last = k;
+		}
 		const Length &len = length[structure.separator][piece];
 		/* The end run counts from the crosser's footprint: a crosser on a diagonal piece reaches one half tile further along the separator. */
 		const int f_first = crosser_heading.front() % 2;

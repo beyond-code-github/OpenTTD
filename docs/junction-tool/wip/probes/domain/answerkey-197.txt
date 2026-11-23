@@ -12,73 +12,32 @@ domain on V's points: NOT legal, 6 breaks, 0 notes
   break connection tile (50,36) tracks L94 L96: 2 track ends meet at (100, 73) with no node
 counts: tracks 101, raw pieces 265, contracted pieces 262, unmapped 0; contraction moved 0, turn-rejected 0
 judge (default rules, interface rows): REFUSE
-  rule named: deck
-  rule named: end run
   rule named: grid
-  rule named: keep apart
   rule named: node
   rule named: node gap
-  rule named: port order
-  refusing rule deck: 2 rows
-    deck 1
-    deck 20
-  refusing rule end run: 17 rows
-    end 9
-    end 15
-    end 15 node
-    end 16 node
-    end 17
-    end 17 node
-    end 20
-    end 22
-    end 25
-    end 28
-    end 30
-    end 32
-    end 33
-    end 34
-    end 40
-    end 45
-    end 48
   refusing rule grid: 2 rows
     integer half
     bound half
-  refusing rule keep apart: 10 rows
-    sep 57 2 4 [tracks L40,L57]
-    sep 95 1 3 [tracks L40,L57]
-    sep 119 1 6 [tracks L40,L57]
-    sep 119 2 6 [tracks L40,L57]
-    sep 120 0 3 [tracks L40,L57]
-    sep 120 1 3 [tracks L40,L57]
-    sep 141 3 6 [tracks L89,L74]
-    sep 141 4 6 [tracks L89,L74]
-    sep 155 4 6 [tracks L74,L89]
-    sep 155 4 7 [tracks L74,L89]
   refusing rule node: 2 rows
     node 47
     node 61
   refusing rule node gap: 1 rows
     leg zero L101
-  refusing rule port order: 1 rows
-    order L57 0
 rows written per rule (V's places that exercise it: keep-apart pairs with rows, lead rows, program rows by tag family):
+  along: 16
   box: 726
   crossing piece: 1112
-  deck: 86
+  deck: 72
   end run: 200
   grid: 1584
-  keep apart: 30045
+  keep apart: 30035
   length: 524
   node: 248
   node gap: 32
   port: 30
-  port order: 151
+  port order: 115
   span: 50
 judge off-interface counterfactual (no port and box rows): REFUSE
-  rule named: deck
-  rule named: end run
   rule named: grid
-  rule named: keep apart
   rule named: node
   rule named: node gap
-  rule named: port order
