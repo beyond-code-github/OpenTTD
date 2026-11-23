@@ -31,6 +31,7 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
     - Lead rows read contracted S-bends (`steps`).
     - X1 and X2 are both EXACT on contracted rows (0 too strict, 0 too loose). X2's 46 flank leaks were zero-length artefacts.
     - Slots item: production `steps` cannot hold an S-bend at a track's end (planar_draw.cpp:556).
+    - Slots item: Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart).
   - Batch 1 DONE (6a82db386e, 9eddae371e, merged).
     - The loader takes crossing-free topologies.
     - K1 (cascade and trident, D433) is exact.

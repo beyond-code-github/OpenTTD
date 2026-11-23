@@ -590,6 +590,9 @@ void RequireBaseLegal(const X1Fixture &f)
 	for (const Conformity &c : ConformitiesOf(f)) REQUIRE(ConformityHolds(c, base));
 }
 
+uint32_t g_turn_moved = 0; ///< Contracted writings that took a later representation because the first turned over one eighth.
+uint32_t g_turn_rejected = 0; ///< Contracted writings with no representation within one eighth per turn (the rows reject them).
+
 /** One polyline's contracted writing (D432): the variant with only the pieces that have length, and its points (the polyline's corners). */
 struct Contracted {
 	PlanarShapeVariant v;
@@ -613,24 +616,39 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 		if (it != g.end()) {
 			for (const auto &[k, len] : it->second) lens[k] = len;
 		}
-		const std::vector<Lengths> reps = Representations(h, PolylineRuns(h, lens), 1, nullptr, &f.v.tracks[t].flex);
+		/* Slots keeps the flank between two used S-bend inserts: consecutive contracted pieces are at most one eighth apart (lifted headings). Flank-first: the next representation (cap 50) before giving up; when none holds, the first stays and the rows reject it (its turn is over one eighth). */
+		const std::vector<Lengths> reps = Representations(h, PolylineRuns(h, lens), 50, nullptr, &f.v.tracks[t].flex);
 		if (reps.empty()) return std::nullopt;
 		PlanarShapeTrack &tr = out.v.tracks[t];
-		tr.pieces.clear();
-		tr.flex.clear();
-		tr.steps.clear();
 		std::vector<int> kept;
-		for (size_t k = 0; k < h.size(); k++) {
-			if (reps[0][k] <= 0) continue;
-			const bool middle = std::ranges::find(f.v.tracks[t].flex, static_cast<uint32_t>(k)) != f.v.tracks[t].flex.end();
-			if (!tr.pieces.empty() && tr.pieces.back() == h[k]) {
-				kept.back() += reps[0][k];
-				if (middle && std::ranges::find(tr.steps, static_cast<uint32_t>(tr.pieces.size() - 1)) == tr.steps.end()) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size() - 1));
-			} else {
-				if (middle) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size()));
-				tr.pieces.push_back(h[k]);
-				kept.push_back(reps[0][k]);
+		const auto write = [&](const Lengths &rep) {
+			tr.pieces.clear();
+			tr.flex.clear();
+			tr.steps.clear();
+			kept.clear();
+			for (size_t k = 0; k < h.size(); k++) {
+				if (rep[k] <= 0) continue;
+				const bool middle = std::ranges::find(f.v.tracks[t].flex, static_cast<uint32_t>(k)) != f.v.tracks[t].flex.end();
+				if (!tr.pieces.empty() && tr.pieces.back() == h[k]) {
+					kept.back() += rep[k];
+					if (middle && std::ranges::find(tr.steps, static_cast<uint32_t>(tr.pieces.size() - 1)) == tr.steps.end()) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size() - 1));
+				} else {
+					if (middle) tr.steps.push_back(static_cast<uint32_t>(tr.pieces.size()));
+					tr.pieces.push_back(h[k]);
+					kept.push_back(rep[k]);
+				}
 			}
+			return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end();
+		};
+		size_t chosen = reps.size();
+		for (size_t r = 0; r < reps.size() && chosen == reps.size(); r++) {
+			if (write(reps[r])) chosen = r;
+		}
+		if (chosen == reps.size()) {
+			write(reps[0]);
+			g_turn_rejected++;
+		} else if (chosen > 0) {
+			g_turn_moved++;
 		}
 		if (tr.pieces.empty()) {
 			/* A track with no run (D433): one piece of length 0, its first heading. */
@@ -757,7 +775,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	};
 	/** Whether the contracted rows accept the polyline's points: every keep-apart pair, every lead row, and the program breaks nothing. */
 	auto accepts = [&](const Contracted &cv, const Readouts &ro) {
-		return std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
+		return std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); })
+			&& std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
 			&& std::ranges::all_of(ro.lead, [&](const PlanarPointRow &r) { return PlanarPointRowHolds(r, cv.points); })
 			&& CheckPlanarProgramOnPoints(ro.program.program, cv.points).broken.empty();
 	};
@@ -772,6 +791,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		return;
 	}
 	g_lead_rows_seen = 0;
+	g_turn_moved = 0;
+	g_turn_rejected = 0;
 	g_lead_by_family.clear();
 	{
 		const std::optional<Contracted> cv = ContractedVariant(f, f.base);
@@ -1036,6 +1057,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	REQUIRE(out.good());
 	out << "Encoding report on " << title << ": our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)\n" << header;
 	out << "node lead rows over the judged contracted variants: " << g_lead_rows_seen << "\n";
+	out << "Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: " << g_turn_moved << ", with none within one eighth (rows reject): " << g_turn_rejected << "\n";
 	for (const Config &cfg : configs) g_lead_by_family.try_emplace(FamilyOf(cfg.name), 0);
 	for (const auto &[family, rows] : g_lead_by_family) out << "node lead rows, configuration " << family << ": " << rows << "\n";
 	out << "enumeration wall " << wall << " s\n\n";
@@ -1199,6 +1221,61 @@ TEST_CASE("planar draw: node lead rows on contracted lines", "[junction][planar]
 		INFO(r.tag);
 		CHECK(PlanarPointRowHolds(r, av->points));
 	}
+}
+
+TEST_CASE("planar draw: the lead rule binds on the sibling's heading (F1)", "[junction][planar][planardomain]")
+{
+	/* M1's too-strict example: A1 arrives at the merge on an S-bend toward its sibling with no flank, but its heading differs from B1's there (a Y): no lead row fails. */
+	const M1Fixture f;
+	Geometry g = f.base;
+	g["A1"] = {{0, 6}, {1, 2}, {2, 2}, {3, 2}, {4, 0}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	for (const PlanarPointRow &r : PlanarNodeLeadRows(cv->v)) {
+		INFO(r.tag);
+		CHECK(PlanarPointRowHolds(r, cv->points));
+	}
+}
+
+TEST_CASE("planar draw: a contracted line turns one eighth at a time (F3)", "[junction][planar][planardomain]")
+{
+	/* M1's turn example: NE then SE with the flank between them removed at length 0: the rows must not accept it. */
+	const M1Fixture f;
+	Geometry g = f.base;
+	g["A1"] = {{0, 10}, {1, 1}, {2, 0}, {3, 1}, {4, 0}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	const Config c{"turn", {{"A1", 0, {10}}, {"A1", 1, {1}}, {"A1", 2, {0}}, {"A1", 3, {1}}, {"A1", 4, {0}}}};
+	std::filesystem::path path = std::filesystem::temp_directory_path() / "planar_domain_turn.txt";
+	RunEncoding(f, path.string().c_str(), "M1 turn", {c}, "", "span+lead+endnode+crosspiece+grid");
+	std::ifstream in(path);
+	const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	std::filesystem::remove(path);
+	CHECK(text.find("  too loose: 0 polylines") != std::string::npos);
+}
+
+TEST_CASE("planar draw: a node-to-out-port line keeps its least lengths (F2)", "[junction][planar][planardomain]")
+{
+	/* X1's first F2 too-loose example: C1 = one 2-long east run (heading 0), A1 and the rest as base. C1 leaves a node for an out port, so D412 does not free its pieces: its run is on the grid rows, and its off-centre-line points break an integer row. */
+	const X1Fixture f;
+	Geometry g = f.base;
+	g["C1"] = {{9, 2}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	o.grid = true;
+	const PlanarDrawResult r = CheckPlanarDrawable(plain, 5.0, o);
+	const std::vector<std::string> broken = CheckPlanarProgramOnPoints(r.program, cv->points).broken;
+	bool integer = false;
+	for (const std::string &b : broken) integer = integer || b.starts_with("integer");
+	INFO("broken " << broken.size() << ", first " << (broken.empty() ? std::string("-") : broken[0]));
+	CHECK(integer);
 }
 
 TEST_CASE("planar draw: keep-apart on fixed points agrees with the program on X1", "[junction][planar][planardomain]")
