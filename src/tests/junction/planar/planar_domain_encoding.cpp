@@ -5909,11 +5909,27 @@ int LazyBestCandidate(const PlanarKeepApartPair &p, const std::vector<std::vecto
 	return best;
 }
 
+/** Slots step 1b: the best candidate's margin on the points (the largest over candidates of the least over its rows of s . (b - a) - spacing). */
+int LazyBestMargin(const PlanarKeepApartPair &p, const std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	int best_margin = INT_MIN;
+	for (const PlanarKeepApartPair::Candidate &cand : p.candidates) {
+		int margin = INT_MAX;
+		for (const PlanarKeepApartPair::Row &r : cand.rows) {
+			const std::array<int, 2> a = PlanarKeepApartEnd(r, false, points), b = PlanarKeepApartEnd(r, true, points);
+			margin = std::min(margin, cand.s[0] * (b[0] - a[0]) + cand.s[1] * (b[1] - a[1]) - cand.spacing);
+		}
+		best_margin = std::max(best_margin, margin);
+	}
+	return best_margin;
+}
+
 /**
  * D444 lazy-4: rounds as lazy-1, but a pair that fails on a round's points is added with its candidate FIXED to the one with the largest margin on those points (one plain row, no binary); a round with fixed pairs that is Infeasible frees the fixed pairs its conflict names (binaries, as lazy-1) and solves again. `list` seeds the free pairs.
  * D446 (slots step 1): with `fix_sides == false` a round's failing pairs join `free_list` (side binaries) and no pair is ever fixed, so the Infeasible branch never frees any. With `tight_bound == true` every round after the first Optimal round sets coord_max to max(64, (2 * biggest + 15) / 16 * 16) over the last Optimal points; a tight round that is not Optimal is solved once more with coord_max doubled (both rows written, the second as stage "<stage>+", both counted).
+ * Slots step 1b: with `near_margin > 0` a pair without rows also joins the failing pairs when its best candidate's margin on the round's points is below `near_margin`.
  */
-LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage_name, std::ostream &md, bool fix_sides = true, bool tight_bound = false)
+LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage_name, std::ostream &md, bool fix_sides = true, bool tight_bound = false, int near_margin = 0)
 {
 	std::string stage_text = stage_name;
 	const char *stage = stage_text.c_str();
@@ -5969,7 +5985,7 @@ LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std
 			const std::vector<std::string> have = all_with_rows();
 			for (const PlanarKeepApartPair &p : r.keep_apart) {
 				if (!p.skipped.empty() || p.candidates.empty()) continue;
-				if (std::ranges::find(have, p.tag) == have.end() && !PlanarKeepApartHolds(p, r.points)) failing.push_back(&p);
+				if (std::ranges::find(have, p.tag) == have.end() && (!PlanarKeepApartHolds(p, r.points) || (near_margin > 0 && LazyBestMargin(p, r.points) < near_margin))) failing.push_back(&p);
 			}
 			run.last = r;
 			run.pairs = r.keep_apart;
@@ -6443,9 +6459,13 @@ TEST_CASE("planar slots: stage A lazy loop under D446 on T1 and T2 (step 1)", "[
 		PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
 		sa.node_gaps = false;
 		sa.tidy = false;
-		const std::string tag = std::format("STEP1 {}", name);
+		const char *mode_env = std::getenv("PLANAR_STEP1_MODE");
+		const std::string mode = mode_env != nullptr ? mode_env : "";
+		if (mode == "tidy" || mode == "tidynear") sa.tidy = true;
+		const int near_margin = (mode == "near" || mode == "tidynear") ? 4 : 0;
+		const std::string tag = mode.empty() ? std::format("STEP1 {}", name) : std::format("STEP1 {} {}", name, mode);
 		md << std::format("\n### {}\n\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n", tag) << std::flush;
-		const LazyRun a = LazyLoop(v, sa, {}, tag, "A", md, false, true);
+		const LazyRun a = LazyLoop(v, sa, {}, tag, "A", md, false, true, near_margin);
 		std::string summary = std::format("\n- {} stage A: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, a.rounds, a.converged, a.stop, a.list.size(), a.all_pairs, static_cast<int>(a.ms));
 		if (a.converged) {
 			int biggest = 0;

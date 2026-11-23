@@ -33,3 +33,41 @@
 - T2 failing pairs per round: 79, 36, 18, 18, 18, 19, 17; the free set grew 79, 115, 133, 151, 169, 188, 205 and the failing count stopped falling after round 2.
 - T2 round 0 had 79 failing pairs (step 0 measured 51 with the default tidy; this run has tidy = false in `sa` as the brief specifies).
 - No polish was run for T2 (not converged).
+
+### STEP1 T2 tidy
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 2403 | 0 | 0 | 0 | 51 | - |
+| A | 1 | Optimal | 4405 | 0 | 51 | 204 | 39 | - |
+| A | 2 | Error | 15011 | 0 | 90 | 360 | - | - |
+| A+ | 2 | Error | 15009 | 0 | 90 | 360 | - | - |
+
+- STEP1 T2 tidy stage A: rounds 4 converged false stop 'Error' pairs with rows 90 of 1945 total ms 36829
+
+### STEP1 T2 near
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 389 | 0 | 0 | 0 | 1010 | - |
+| A | 1 | Error | 15026 | 0 | 1010 | 4040 | - | - |
+| A+ | 1 | Error | 15200 | 0 | 1010 | 4040 | - | - |
+
+- STEP1 T2 near stage A: rounds 3 converged false stop 'Error' pairs with rows 1010 of 1945 total ms 30616
+
+### STEP1 T2 tidynear
+
+| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |
+|---|---|---|---|---|---|---|---|---|
+| A | 0 | Optimal | 2392 | 0 | 0 | 0 | 1124 | - |
+| A | 1 | Error | 15115 | 0 | 1124 | 4496 | - | - |
+| A+ | 1 | Error | 15025 | 0 | 1124 | 4496 | - | - |
+
+- STEP1 T2 tidynear stage A: rounds 3 converged false stop 'Error' pairs with rows 1124 of 1945 total ms 32533
+
+#### Reading (step 1b)
+
+- tidy: not converged, 4 rounds (A 0, 1, 2, 2+; rounds 2 and 2+ Error at the 15 s cap), last pairs with rows 90 of 1945, 36829 ms, no polish. Failing pairs fell 51 then 39 on rounds 0 and 1.
+- near (margin 4): not converged, 3 rounds, round 0 added 1010 pairs, round 1 (4040 binaries) Error at cap, last pairs with rows 1010, 30616 ms, no polish.
+- tidynear: not converged, 3 rounds, round 0 added 1124 pairs, round 1 (4496 binaries) Error at cap, last pairs with rows 1124, 32533 ms, no polish.
+- Round 0 was Optimal in all three modes; the near modes add over half of the 1945 pairs at margin 4, so no mode reached a round 2 solve with a usable size.
