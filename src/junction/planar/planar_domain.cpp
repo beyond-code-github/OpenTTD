@@ -365,7 +365,9 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 			if (!usable(c)) continue;
 			bool crosses = false;
 			for (uint32_t i = 0; i < rasters[c].pieces.size() && !crosses; i++) {
-				if (kinds[c][i] != Kind::Ground) continue;
+				/* A tunnel's middle crosses a tunnel's middle by depth (D390 (2)); bridge over bridge stays refused. */
+				const PlanarDomainStructure *under_middle = kinds[c][i] == Kind::Middle ? middle_of({c, i}) : nullptr;
+				if (kinds[c][i] != Kind::Ground && !(st->tunnel && under_middle != nullptr && under_middle->tunnel)) continue;
 				for (uint32_t m = st->first + st->ends; m + st->ends <= st->last && !crosses; m++) {
 					crosses = SameTile(rasters[c].pieces[i].tile, rasters[st->separator].pieces[m].tile);
 				}
