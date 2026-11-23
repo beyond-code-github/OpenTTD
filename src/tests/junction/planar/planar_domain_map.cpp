@@ -103,9 +103,10 @@ TEST_CASE("planar domain: a drawing's input from its variant", "[junction][plana
 		CHECK(in.structures[0].separator == Index(v, "A1"));
 		CHECK(AsSet(in.structures[0].crossers) == Named(v, {"B1"}));
 		CHECK(in.structures[0].tunnel);
-		CHECK(in.structures[0].ends == 2);
-		CHECK(in.structures[0].first == 1);
-		CHECK(in.structures[0].last == 5);
+		/* A tunnel's end run is the portal alone, 1 piece (D437): the span runs one piece further in at each end than with portal and ramp. */
+		CHECK(in.structures[0].ends == 1);
+		CHECK(in.structures[0].first == 2);
+		CHECK(in.structures[0].last == 4);
 		CHECK(in.structures[0].limit == v.structure.structures[0].limit[1]);
 		CHECK(notes.empty());
 		const PlanarDomainVerdict d = CheckPlanarDomain(in);
@@ -156,8 +157,9 @@ TEST_CASE("planar domain: a node tile the separator and its crosser share is not
 	CHECK(notes.empty());
 	REQUIRE(in.structures.size() == 1);
 	CHECK(in.structures[0].separator == a1);
-	CHECK(in.structures[0].first == 1);
-	CHECK(in.structures[0].last == 6);
+	/* End run 1 (D437): the span starts and ends one piece further in than with the old portal and ramp. */
+	CHECK(in.structures[0].first == 2);
+	CHECK(in.structures[0].last == 5);
 	const PlanarDomainVerdict d = CheckPlanarDomain(in);
 	std::string text;
 	for (const PlanarDomainBreak &b : d.breaks) text += b.rule + ": " + b.why + "\n";
