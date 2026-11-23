@@ -2629,6 +2629,41 @@ TEST_CASE("planar domain: P1 is exact under the default rule set", "[junction][p
 
 namespace {
 
+/** P1 with the lane A1#3 `travel` half tiles from the row's split node to its merge node and the row A1#4 four shorter; C1's S port moves with the merge. */
+Verdicts P1PrioTravel(int travel)
+{
+	P1Fixture f;
+	Geometry g = f.base;
+	g["A1#3"] = {{0, travel}};
+	g["A1#4"] = {{0, travel - 4}};
+	f.starts["C1"][0] = travel;
+	return VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
+}
+
+} // namespace
+
+TEST_CASE("planar domain: a prio row exactly its coverage long is accepted (D384)", "[junction][planar][planardomain]")
+{
+	/* The travel is measured along A1#3's points between the row's split node and merge node (one piece); the coverage is rules.coverage = 2 prio_tiles + 4. D410 positions are differences only, so a single-line side has no absolute pin (finding): C1's start is moved in the test instead. */
+	const P1Fixture f;
+	const Verdicts v = P1PrioTravel(f.v.structure.rules.coverage);
+	INFO("refused by " << Join(v.rules));
+	CHECK(v.domain);
+	CHECK(v.rows == 0);
+}
+
+TEST_CASE("planar domain: a prio row longer than its coverage is refused (D384)", "[junction][planar][planardomain][!shouldfail]")
+{
+	/* D384: the drawing program has no coverage row yet (STATUS), so the judge accepts; the test flips to unexpected pass when an implementation adds `prio length`. The domain has no prio semantics and accepts. Travel = coverage + 2. D410 positions are differences only, so a single-line side has no absolute pin (finding). */
+	const P1Fixture f;
+	const Verdicts v = P1PrioTravel(f.v.structure.rules.coverage + 2);
+	CHECK(v.domain);
+	CHECK(v.rows == 1);
+	CHECK(v.rules.contains("prio length"));
+}
+
+namespace {
+
 /** BR1: X1's topology with its one structure a bridge instead of a tunnel (domain-31). */
 struct BridgeFixture : DrawnFixture {
 	BridgeFixture() : DrawnFixture(
