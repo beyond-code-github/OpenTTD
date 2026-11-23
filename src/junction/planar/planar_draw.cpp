@@ -801,6 +801,28 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	}
 
+	/* Grid (F4, D382, D428): every track point lies on an edge midpoint, x + y = 2 h + 1 with h an integer (the parity pass takes these as rows, so a seeded x forces y). A node's point is one point: its other ends are tied to the first by the node rows and are skipped. */
+	if (options.grid && !options.elastic) {
+		std::set<std::pair<size_t, size_t>> same_as_first;
+		for (const PlanarNode &node : map.expanded.nodes) {
+			bool first = true;
+			const auto visit = [&](uint32_t line, size_t at) {
+				if (is_beside[line]) return;
+				if (!first) same_as_first.insert({line, at});
+				first = false;
+			};
+			for (const uint32_t line : node.in) visit(line, point[line].size() - 1);
+			for (const uint32_t line : node.out) visit(line, 0);
+		}
+		for (size_t t = 0; t < nt; t++) {
+			for (size_t k = 0; k < point[t].size(); k++) {
+				if (same_as_first.contains({t, k})) continue;
+				const uint32_t h = var(0, options.coord_max, 0, "other");
+				eq({{point[t][k][0], 1}, {point[t][k][1], 1}, {h, -2}}, 1, fmt::format("grid point {} {}", map.tracks[t].name, k));
+			}
+		}
+	}
+
 	/* Corridors: each interior vertex of a beside track keeps one lane (the miter) from its parent chain's vertex, for both headings meeting there. */
 	for (const Beside &beside : besides) {
 		const uint32_t b = beside.track;

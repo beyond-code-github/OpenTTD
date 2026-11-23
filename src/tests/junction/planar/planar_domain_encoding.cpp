@@ -1721,6 +1721,41 @@ TEST_CASE("planar domain: the grid rows reject an off-grid drawing", "[junction]
 	CHECK(verdict_off == 0);
 }
 
+TEST_CASE("planar draw: grid points lie on edge midpoints", "[junction][planar][planardomain]")
+{
+	/* X1's base with every point of every track shifted by (1, 0): every point's x + y parity flips, so a point is on an edge midpoint no longer and a `grid point` row breaks in the program check with grid on (F4, D428). */
+	X1Fixture f;
+	for (auto &[name, start] : f.starts) start[0] += 1;
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarDrawOptions o = f.options;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	o.grid = true;
+	const PlanarDrawResult out = CheckPlanarDrawable(plain, 5.0, o);
+	/* The program has a `grid point <track> <k>` row for the points, and the shifted base violates it (x + y even); the program check breaks, through the row's h, which no other row fixes. */
+	size_t grid_rows = 0, violated = 0;
+	for (const PlanarProgram::Row &r : out.program.rows) {
+		if (!r.tag.starts_with("grid point ")) continue;
+		grid_rows++;
+		std::istringstream in(r.tag.substr(11));
+		std::string track;
+		size_t k = 0;
+		in >> track >> k;
+		const Point &p = cv->points.at(f.idx.at(track)).at(k);
+		if (((p[0] + p[1]) % 2) == 0) violated++;
+	}
+	const std::vector<std::string> broken = CheckPlanarProgramOnPoints(out.program, cv->points).broken;
+	INFO("grid point rows " << grid_rows << ", violated " << violated << ", broken " << broken.size() << ", first " << (broken.empty() ? std::string("-") : broken[0]));
+	CHECK(grid_rows > 0);
+	CHECK(violated == grid_rows);
+	CHECK(!broken.empty());
+}
+
 TEST_CASE("planar domain: a too-strict polyline is on the grid", "[junction][planar][planardomain]")
 {
 	/* X1's B1 run north on x = 10 (0*2,1*2,0*2,7*3,0*8 from (11,10)): the raster calls it off the grid, so under +grid the domain rejects it and it is never too strict. */
