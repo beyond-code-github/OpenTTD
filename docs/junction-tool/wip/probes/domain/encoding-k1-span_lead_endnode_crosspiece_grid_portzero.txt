@@ -1,0 +1,132 @@
+Encoding report on K1: our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)
+node_gaps: on (D424)
+A1 headings after flex: 1 0 1 2 1 0 -1 0 1 0; flex middles: 1 3 6 8; run holders: 0 9
+ABC1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+B1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+BC1 headings after flex: 2 1 2 3 2; flex middles: 1 3; run holders: 4
+C1 headings after flex: 3 2 3 4 3 4 3 4 5 4; flex middles: 1 3 6 8; run holders: 0 9
+node lead rows over the judged contracted variants: 34
+corridor rows over the judged on-grid contracted variants: 0; in the base polyline's read-out: 0
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 182
+node lead rows, configuration K1a: 28
+node lead rows, configuration node0: 0
+node lead rows, configuration node1: 6
+enumeration wall 0.302421 s
+
+wall K1a: 0.285845 s
+enumeration K1a: blind 1296 geometries (216 on the grid, 1080 off; 0 more skipped, an absorbing piece had no length); by construction 216 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== K1a ==
+  both accept: 28 polylines (54 geometries)
+  both reject: 756 polylines (1242 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 ABC1: 0.00184666 s
+enumeration node0 ABC1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 ABC1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 A1: 0.00110937 s
+enumeration node0 A1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 A1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 BC1: 0.00173818 s
+enumeration node0 BC1: blind 10 geometries (6 on the grid, 4 off; 17 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 BC1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 B1: 0.0100743 s
+enumeration node1 B1: blind 27 geometries (15 on the grid, 12 off; 0 more skipped, an absorbing piece had no length); by construction 15 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 B1 ==
+  both accept: 7 polylines (15 geometries)
+  both reject: 12 polylines (12 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 C1: 0.000963785 s
+enumeration node1 C1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 C1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 BC1: 0.000391181 s
+enumeration node1 BC1: blind 10 geometries (6 on the grid, 4 off; 35 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 BC1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total hand-named configurations ==
+  both accept: 28 polylines (54 geometries)
+  both reject: 756 polylines (1242 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total neighbourhood configurations ==
+  both accept: 7 polylines (45 geometries)
+  both reject: 22 polylines (26 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total ==
+  both accept: 34 polylines (99 geometries)
+  both reject: 778 polylines (1268 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== base (strict rules on): failing pairs ==
+      sep 2 9 11 tracks A1/BC1 pieces 0/1 kept [zero contraction kept, full spacing (same direction)] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -8;
+      sep 3 1 5 tracks B1/C1 pieces 3/0 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,-1)+2 worst slack -8; s(-1,-1)+2 worst slack -2;

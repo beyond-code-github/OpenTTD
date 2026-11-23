@@ -1,0 +1,278 @@
+Encoding report on X1: our contracted rows (judged on fixed points, no solve) against the domain, one writing per polyline (D432)
+node lead rows over the judged contracted variants: 191
+corridor rows over the judged on-grid contracted variants: 0; in the base polyline's read-out: 0
+Slots keeps the flank between two used S-bend inserts (consecutive contracted pieces at most one eighth apart); contracted writings that took a later representation: 0, with none within one eighth (rows reject): 62
+node lead rows, configuration N1: 33
+node lead rows, configuration S1: 61
+node lead rows, configuration S2: 90
+node lead rows, configuration cross0: 3
+node lead rows, configuration node0: 4
+node lead rows, configuration node1: 0
+enumeration wall 0.6404 s
+
+wall S1: 0.147332 s
+enumeration S1: blind 525 geometries (189 on the grid, 336 off; 0 more skipped, an absorbing piece had no length); by construction 189 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== S1 ==
+  both accept: 43 polylines (75 geometries)
+  both reject: 273 polylines (298 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 149 polylines (152 geometries)
+    other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall S2: 0.225742 s
+enumeration S2: blind 600 geometries (216 on the grid, 384 off; 0 more skipped, an absorbing piece had no length); by construction 216 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== S2 ==
+  both accept: 35 polylines (63 geometries)
+  both reject: 435 polylines (470 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 60 polylines (67 geometries)
+    other shape, varied: A1.2=4 A1.3=4 A1.4=2 A1.5=1 A1.6=4
+      polyline A1:2*4,3*4,2*2,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.2=4 A1.3=4 A1.4=4 A1.5=1 A1.6=4
+      polyline A1:2*4,3*4,2*4,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.2=4 A1.3=4 A1.4=6 A1.5=1 A1.6=4
+      polyline A1:2*4,3*4,2*6,1*1,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall N1: 0.213923 s
+enumeration N1: blind 576 geometries (96 on the grid, 480 off; 0 more skipped, an absorbing piece had no length); by construction 96 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== N1 ==
+  both accept: 33 polylines (48 geometries)
+  both reject: 435 polylines (528 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 AC1: 0.00184796 s
+enumeration node0 AC1: blind 10 geometries (6 on the grid, 4 off; 17 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 AC1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 4 polylines (4 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 C1: 0.00102628 s
+enumeration node0 C1: blind 7 geometries (6 on the grid, 1 off; 38 more skipped, an absorbing piece had no length); by construction 6 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 C1 ==
+  both accept: 1 polylines (6 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node0 A1: 0.00892292 s
+enumeration node0 A1: blind 27 geometries (15 on the grid, 12 off; 0 more skipped, an absorbing piece had no length); by construction 15 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node0 A1 ==
+  both accept: 1 polylines (9 geometries)
+  both reject: 15 polylines (15 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 3 polylines (3 geometries)
+    other shape, varied: A1.0=4 A1.1=2 A1.2=0
+      polyline A1:2*4,1*2,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.0=0 A1.1=2 A1.2=4
+      polyline A1:1*2,2*4,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.0=2 A1.1=2 A1.2=2
+      polyline A1:2*2,1*2,2*2,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 BD1: 0.000651641 s
+enumeration node1 BD1: blind 4 geometries (3 on the grid, 1 off; 23 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 BD1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 1 polylines (1 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 B1: 0.00360148 s
+enumeration node1 B1: blind 17 geometries (9 on the grid, 8 off; 10 more skipped, an absorbing piece had no length); by construction 9 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 B1 ==
+  both accept: 1 polylines (8 geometries)
+  both reject: 6 polylines (6 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 3 polylines (3 geometries)
+    other shape, varied: B1.0=4 B1.1=1 B1.2=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,7*1,1*1,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.0=2 B1.1=2 B1.2=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,1*2,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.0=0 B1.1=2 B1.2=2
+      polyline A1:2*16,;AC1:2*4,;B1:7*2,0*2,1*2,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall node1 D1: 0.000500485 s
+enumeration node1 D1: blind 3 geometries (3 on the grid, 0 off; 33 more skipped, an absorbing piece had no length); by construction 3 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== node1 D1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 0 polylines (0 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall cross0 B1: 0.00134691 s
+enumeration cross0 B1: blind 10 geometries (4 on the grid, 6 off; 35 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== cross0 B1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 3 polylines (3 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 4 polylines (4 geometries)
+    other shape, varied: B1.3=0 B1.4=4 B1.5=1
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,7*1,1*1,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.3=0 B1.4=2 B1.5=2
+      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,1*2,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.3=1 B1.4=2 B1.5=2
+      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*2,1*1,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall cross0 A1: 0.00411314 s
+enumeration cross0 A1: blind 10 geometries (4 on the grid, 6 off; 35 more skipped, an absorbing piece had no length); by construction 4 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== cross0 A1 ==
+  both accept: 1 polylines (3 geometries)
+  both reject: 7 polylines (7 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 0 polylines (0 geometries)
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+wall cross0 B1+A1: 0.0308058 s
+enumeration cross0 B1+A1: blind 100 geometries (16 on the grid, 84 off; 1925 more skipped, an absorbing piece had no length); by construction 16 geometries (0 of them the raster refuses and are not judged here: its turn rules)
+== cross0 B1+A1 ==
+  both accept: 1 polylines (9 geometries)
+  both reject: 40 polylines (60 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 23 polylines (31 geometries)
+    other shape, varied: B1.3=0 B1.4=4 B1.5=1 A1.3=0 A1.4=8 A1.5=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,7*1,1*1,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.3=0 B1.4=2 B1.5=2 A1.3=0 A1.4=8 A1.5=0
+      polyline A1:2*16,;AC1:2*4,;B1:0*2,7*2,1*2,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.3=1 B1.4=2 B1.5=2 A1.3=0 A1.4=8 A1.5=0
+      polyline A1:2*16,;AC1:2*4,;B1:1*1,0*2,7*2,1*1,0*4,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total hand-named configurations ==
+  both accept: 107 polylines (186 geometries)
+  both reject: 1143 polylines (1296 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 209 polylines (219 geometries)
+    other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total neighbourhood configurations ==
+  both accept: 1 polylines (50 geometries)
+  both reject: 66 polylines (97 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 27 polylines (41 geometries)
+    other shape, varied: A1.0=4 A1.1=2 A1.2=0
+      polyline A1:2*4,1*2,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.0=0 A1.1=2 A1.2=4
+      polyline A1:1*2,2*4,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: A1.0=2 A1.1=2 A1.2=2
+      polyline A1:2*2,1*2,2*2,3*2,2*8,;AC1:2*4,;B1:0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== total ==
+  both accept: 107 polylines (236 geometries)
+  both reject: 1209 polylines (1393 geometries)
+  too strict: 0 polylines (0 geometries)
+  too loose: 0 polylines (0 geometries)
+  off grid (geometries): 0 (0 geometries)
+  other shape: 236 polylines (260 geometries)
+    other shape, varied: B1.2=4 B1.3=3 B1.4=2 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*10,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=4 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*12,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+    other shape, varied: B1.2=4 B1.3=3 B1.4=6 B1.5=0 B1.6=4
+      polyline A1:2*16,;AC1:2*4,;B1:0*4,1*3,0*14,;BD1:0*2,;C1:1*3,0*2,;D1:1*1,2*8,;
+ too strict, by the kept values of the failing pairs:
+ too loose, by domain break rules:
+
+== base (strict rules on): failing pairs ==
+      sep 1 1 5 tracks BD1/B1 pieces 1/0 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1;
+      sep 1 1 6 tracks BD1/B1 pieces 1/1 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2;
+      sep 1 1 7 tracks BD1/B1 pieces 1/2 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1;
+      sep 1 1 8 tracks BD1/B1 pieces 1/3 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2;
+      sep 1 2 5 tracks BD1/B1 pieces 2/0 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2;
+      sep 1 2 6 tracks BD1/B1 pieces 2/1 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 2 7 tracks BD1/B1 pieces 2/2 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2;
+      sep 1 2 8 tracks BD1/B1 pieces 2/3 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1; s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2;
+      sep 1 3 5 tracks BD1/B1 pieces 3/0 kept [zero contraction kept, touch ends exempt] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1;
+      sep 1 3 6 tracks BD1/B1 pieces 3/1 kept [zero contraction kept, touch ends exempt] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 3 7 tracks BD1/B1 pieces 3/2 kept [zero contraction kept, touch ends exempt] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1;
+      sep 1 3 8 tracks BD1/B1 pieces 3/3 kept [zero contraction kept, touch ends exempt] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -2;
+      sep 1 4 6 tracks BD1/B1 pieces 4/1 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 4 7 tracks BD1/B1 pieces 4/2 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(0,-1)+2 worst slack -2; s(0,-1)+2 worst slack -2;
+      sep 1 4 8 tracks BD1/B1 pieces 4/3 kept [zero contraction kept, touch ends exempt] candidates: s(-1,0)+1 worst slack -1; s(-1,0)+1 worst slack -1; s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2;
+      sep 1 11 15 tracks A1/AC1 pieces 3/4 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1;
+      sep 1 11 16 tracks A1/AC1 pieces 3/3 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2;
+      sep 1 11 17 tracks A1/AC1 pieces 3/2 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1;
+      sep 1 11 18 tracks A1/AC1 pieces 3/1 kept [zero contraction kept, touch ends exempt] candidates: s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2;
+      sep 1 12 15 tracks A1/AC1 pieces 2/4 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+2 worst slack -2; s(0,1)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2;
+      sep 1 12 16 tracks A1/AC1 pieces 2/3 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 12 17 tracks A1/AC1 pieces 2/2 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+2 worst slack -2; s(0,1)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2;
+      sep 1 12 18 tracks A1/AC1 pieces 2/1 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1; s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2;
+      sep 1 13 15 tracks A1/AC1 pieces 1/4 kept [zero contraction kept, touch ends exempt] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1;
+      sep 1 13 16 tracks A1/AC1 pieces 1/3 kept [zero contraction kept, touch ends exempt] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 13 17 tracks A1/AC1 pieces 1/2 kept [zero contraction kept, touch ends exempt] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1;
+      sep 1 13 18 tracks A1/AC1 pieces 1/1 kept [zero contraction kept, touch ends exempt] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 14 16 tracks A1/AC1 pieces 0/3 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2;
+      sep 1 14 17 tracks A1/AC1 pieces 0/2 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+2 worst slack -2; s(0,1)+2 worst slack -2; s(-1,0)+2 worst slack -2; s(-1,0)+2 worst slack -2;
+      sep 1 14 18 tracks A1/AC1 pieces 0/1 kept [zero contraction kept, touch ends exempt] candidates: s(0,1)+1 worst slack -1; s(0,1)+1 worst slack -1; s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2;
+      sep 2 0 15 tracks BD1/D1 pieces 4/1 kept [zero contraction kept, touch ends exempt] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1;
+      sep 2 2 15 tracks BD1/D1 pieces 2/1 kept [zero contraction kept, touch ends exempt] candidates: s(1,0)+2 worst slack -1; s(1,0)+2 worst slack -3; s(0,1)+2 worst slack -3; s(0,1)+2 worst slack -1;
+      sep 3 9 11 tracks C1/A1 pieces 0/1 kept [zero contraction kept, full spacing (same direction)] candidates: s(1,1)+2 worst slack -2; s(1,1)+2 worst slack -2; s(-1,1)+2 worst slack -2; s(-1,1)+2 worst slack -8;
+      sep 4 0 17 tracks D1/B1 pieces 0/3 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,-1)+2 worst slack -2; s(-1,-1)+2 worst slack -2; s(1,-1)+2 worst slack -4; s(1,-1)+2 worst slack -2;
+      sep 4 1 16 tracks D1/B1 pieces 1/4 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -7;
+      sep 4 1 18 tracks D1/B1 pieces 1/2 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1;
+      sep 4 1 20 tracks D1/B1 pieces 1/0 kept [zero contraction kept, full spacing (same direction)] candidates: s(-1,0)+2 worst slack -1; s(-1,0)+2 worst slack -3; s(0,-1)+2 worst slack -3; s(0,-1)+2 worst slack -1;
