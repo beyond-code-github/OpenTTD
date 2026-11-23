@@ -883,7 +883,7 @@ RowsJudge DrawingProgramJudge(const std::string &rules);
 /** The suite's rule names by the drawing program's tag family (the tag up to its first space; for `bound <g>` and `integer <g>` the two words); a family not here is reported as `other <family>`. The turn checks (`turn`, `node turn`) are the suite's own and have no tag. */
 const std::map<std::string, std::string> RULE_NAMES = {
 	{"sep", "keep apart"}, {"sepdir", "keep apart"}, {"sephard", "keep apart"},
-	{"lead", "lead"},
+	{"lead", "lead"}, {"along", "along"},
 	{"end", "end run"},
 	{"cross", "crossing piece"},
 	{"grid", "grid"}, {"integer half", "grid"}, {"bound half", "grid"},
@@ -1289,6 +1289,39 @@ struct Readouts {
 
 Readouts g_last_readouts; ///< The drawing program's read-outs of the last DrawingProgramJudge call: the report's diagnostics only, the behaviour is RowsVerdict.
 
+/** D438: the along mode of the polyline's own drawing, as the judge reads it: per track and event, 1 when the track crosses a tunnel there, its piece after the crossing piece has the separator's heading mod 4 and starts on the separator's line. */
+std::vector<std::vector<double>> AlongFrom(const Contracted &cv)
+{
+	const auto &map = cv.v.structure.map;
+	std::vector<std::vector<double>> out(cv.v.tracks.size());
+	for (size_t t = 0; t < out.size(); t++) out[t].assign(map.events[t].size(), 0.0);
+	for (const PlanarStructure &st : cv.v.structure.structures) {
+		if (st.kinds != 2 || st.crossings.empty() || st.separator >= out.size()) continue;
+		const PlanarShapeTrack &sep = cv.v.tracks[st.separator];
+		if (sep.event_piece.size() != map.events[st.separator].size()) continue;
+		for (size_t k = 0; k < map.events[st.separator].size(); k++) {
+			if (std::ranges::find(st.crossings, map.events[st.separator][k]) == st.crossings.end()) continue;
+			const uint32_t sp = sep.event_piece[k];
+			const int axis = ((sep.pieces[sp] % 8) + 8) % 8;
+			const auto &s0 = cv.points[st.separator][sp];
+			const int *step = STEPS[axis];
+			for (const uint32_t crosser : st.crossers) {
+				const PlanarShapeTrack &tr = cv.v.tracks[crosser];
+				if (tr.event_piece.size() != map.events[crosser].size()) continue;
+				for (size_t e = 0; e < map.events[crosser].size(); e++) {
+					if (map.events[crosser][e] != map.events[st.separator][k]) continue;
+					const uint32_t cp = tr.event_piece[e];
+					if (cp + 1 >= tr.pieces.size() || ((tr.pieces[cp + 1] % 8) + 8) % 8 % 4 != axis % 4) continue;
+					const auto &p = cv.points[crosser][cp + 1];
+					const long across = static_cast<long>(step[1]) * (static_cast<long>(p[0]) - s0[0]) - static_cast<long>(step[0]) * (static_cast<long>(p[1]) - s0[1]);
+					if (across == 0) out[crosser][e] = 1.0;
+				}
+			}
+		}
+	}
+	return out;
+}
+
 RowsJudge DrawingProgramJudge(const std::string &rule_set)
 {
 	/* PLANAR_DOMAIN_RULES (a measurement): plain, span, zero or all (default) strict keep-apart rules. */
@@ -1311,7 +1344,9 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 		/* The read-outs get the variant with steps cleared (production's steps cannot yet hold a step at a track's end); only the lead rows read them. */
 		PlanarShapeVariant plain = cv.v;
 		for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+		const std::vector<std::vector<double>> along_from = AlongFrom(cv);
 		PlanarDrawOptions base_options = f.options;
+		base_options.along_from = &along_from;
 		base_options.node_lead = lead;
 		base_options.end_node = endnode;
 		base_options.cross_piece = crosspiece;
@@ -2078,8 +2113,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planard
 	RunEncoding(f, report_path, "X2", configs, header.str(), DrawingProgramJudge(""));
 }
 
-/* F9: with a tunnel's end run 1 (D437) the domain's keep-apart between the separator A1 and the crosser B1 is too strict on 23 X2 polylines (B1 with a 3-long and then a 1-long diagonal step, [strict span] on the A1/B1 pairs; the rows also refuse them by box, keep apart, port). Not fixed here. */
-TEST_CASE("planar domain: X2 is exact under the default rule set", "[junction][planar][planardomainexact][!shouldfail]")
+TEST_CASE("planar domain: X2 is exact under the default rule set", "[junction][planar][planardomainexact]")
 {
 	const X2Fixture f;
 	RequireBaseLegal(f);
@@ -2088,6 +2122,44 @@ TEST_CASE("planar domain: X2 is exact under the default rule set", "[junction][p
 	INFO("X2: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
 	CHECK(totals[3] == 0);
+}
+
+TEST_CASE("planar domain: a line may run along a tunnel over its middles (D438, F9)", "[junction][planar][planardomain]")
+{
+	/* X2's B1 crosses A1's tunnel on its diagonal (D414: the crossing piece ends on A1's line), then runs east ALONG the tunnel over a middle tile (E2) and leaves it on a diagonal at a middle tile: the judge and the domain accept. The same family with E4 (B1's diagonal then starts at the portal tile) is refused by both. A plain long diagonal crossing (not in along mode) is accepted by both. The polylines move B1's far end, so the interface rows (the ports and the box) are off: they are not what the test is about. */
+	const X2Fixture f;
+	const RowsJudge judge = DrawingProgramJudge(DEFAULT_RULES);
+	const auto with = [&](const Runs &runs) {
+		const std::vector<Lengths> reps = Representations(f.heads.at("B1"), runs, 50, nullptr, &f.v.tracks[f.idx.at("B1")].flex);
+		REQUIRE_FALSE(reps.empty());
+		Geometry g = f.base;
+		g["B1"].clear();
+		for (size_t k = 0; k < reps[0].size(); k++) {
+			if (reps[0][k] != 0) g["B1"][static_cast<uint32_t>(k)] = reps[0][k];
+		}
+		Verdicts r;
+		std::vector<std::string> notes;
+		const std::optional<Contracted> cv = ContractedVariant(f, g);
+		REQUIRE(cv.has_value());
+		const RowsVerdict v = judge(f, *cv, false);
+		r.rows = v.accept ? 0 : 1;
+		r.rules = v.rules;
+		r.domain = CheckPlanarDomain(PlanarDomainInputOf(f.v, f.PointsOf(g), notes)).legal;
+		return r;
+	};
+	const Verdicts along = with({{0, 2}, {1, 3}, {2, 2}, {1, 5}, {0, 4}});
+	INFO("refused by " << Join(along.rules));
+	CHECK(along.rows == 0);
+	CHECK(along.domain);
+	const Verdicts portal = with({{0, 2}, {1, 3}, {2, 4}, {1, 1}, {0, 4}});
+	INFO("refused by " << Join(portal.rules));
+	CHECK(portal.rows == 1);
+	CHECK(portal.rules.contains("along"));
+	CHECK_FALSE(portal.domain);
+	const Verdicts plain = with({{0, 2}, {1, 6}, {0, 4}});
+	INFO("refused by " << Join(plain.rules));
+	CHECK(plain.rows == 0);
+	CHECK(plain.domain);
 }
 
 namespace {
