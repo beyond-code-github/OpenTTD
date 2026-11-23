@@ -56,6 +56,12 @@ def main():
 	solver.parameters.num_workers = workers
 	status = solver.Solve(model)
 	print(f'variables {len(xs)} rows {len(program["rows"])} status {solver.StatusName(status)} wall {solver.WallTime():.2f} s')
+	values = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--values=')), None)
+	if values is not None and status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+		# Every variable's value in creation order (PlanarDrawOptions::start_all).
+		with open(values, 'w') as f:
+			for x in xs:
+				f.write(f'{solver.Value(x)}\n')
 	dump = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--lengths=')), None)
 	if dump is not None and status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
 		# The piece lengths (groups axis and diagonal, created per track then per piece), one value per line, in variable units.
