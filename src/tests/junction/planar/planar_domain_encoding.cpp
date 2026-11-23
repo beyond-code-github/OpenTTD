@@ -6191,3 +6191,104 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 		}
 	}
 }
+
+/** D444 lazy-5: why T2 (offers 1, D443 off) stage A is Infeasible with every keep-apart row: elastic on "sep" only, LP then integer; the stretched pairs with their walls and the domain's breaks near them. */
+TEST_CASE("planar slots: T2 stage A elastic keep-apart diagnosis (lazy-5)", "[.][lazydiag]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ofstream md(std::getenv("PLANAR_DIAG_OUT") != nullptr ? std::getenv("PLANAR_DIAG_OUT") : "diag.md", std::ios::app);
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	const X1Fixture fa(v);
+	const auto &mp = v.structure.map;
+	for (const bool integer : {false, true}) {
+		PlanarDrawOptions o = SlotsOptions(fa, DEFAULT_RULES);
+		o.node_gaps = false;
+		o.keep_apart_out = true;
+		o.elastic = true;
+		o.elastic_families = {"sep"};
+		o.elastic_integer = integer;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
+		std::string out = std::format("\n## elastic {} (sep only)\n\nstatus {} ms {} binaries {} total slack {} stretched rows {}\n", integer ? "integer" : "continuous LP", r.status, static_cast<int>(r.ms), r.binaries, r.slack, r.stretched.size());
+		if (r.status == "Optimal") {
+			const auto where = [&](uint32_t t, uint32_t piece) {
+				std::string s = std::format("{} piece {} h{}", fa.Name(t), piece, v.tracks[t].pieces[piece]);
+				const auto &ev = mp.events[t];
+				for (size_t k = 0; k < ev.size(); k++) {
+					if (v.tracks[t].event_piece[k] == piece) s += std::format(" [crossing {} {}x{}]", ev[k], fa.Name(mp.crossings[ev[k]].a), fa.Name(mp.crossings[ev[k]].b));
+				}
+				const PlanarLine &ln = mp.expanded.lines[t];
+				if (piece == 0) s += std::format(" [starts {} {}]", ln.from.port ? "port" : "node", ln.from.index);
+				if (piece + 1 == v.tracks[t].pieces.size()) s += std::format(" [ends {} {}]", ln.to.port ? "port" : "node", ln.to.index);
+				std::string near;
+				for (size_t k = 0; k < ev.size(); k++) {
+					if (v.tracks[t].event_piece[k] + 2 >= piece && piece + 2 >= v.tracks[t].event_piece[k]) near += std::format(" {}", ev[k]);
+				}
+				if (!near.empty()) s += " near crossings" + near;
+				const auto &pts = r.points[t];
+				s += std::format(" pts ({},{})->({},{})", pts[piece][0], pts[piece][1], pts[piece + 1][0], pts[piece + 1][1]);
+				return s;
+			};
+			std::vector<std::string> notes;
+			const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(v, r.points, notes));
+			out += std::format("domain on the whole elastic drawing: {} notes {} breaks {}\n", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
+			std::map<std::string, int> by_rule;
+			for (const PlanarDomainBreak &br : d.breaks) by_rule[br.rule]++;
+			for (const auto &[rule, n] : by_rule) out += std::format("  - rule [{}] x{}\n", rule, n);
+			int shown = 0;
+			for (const auto &[tag, slack] : r.stretched) {
+				out += std::format("\n- stretched [{}] slack {}\n", tag, slack);
+				if (shown++ >= 10) continue;
+				for (const PlanarKeepApartPair &p : r.keep_apart) {
+					if (p.tag != tag) continue;
+					out += std::format("  - wall i: {}\n  - wall j: {}\n", where(p.tracks[0], p.pieces[0]), where(p.tracks[1], p.pieces[1]));
+					for (size_t c = 0; c < p.candidates.size(); c++) {
+						int margin = INT_MAX;
+						for (const PlanarKeepApartPair::Row &row : p.candidates[c].rows) {
+							const std::array<int, 2> a = PlanarKeepApartEnd(row, false, r.points), b = PlanarKeepApartEnd(row, true, r.points);
+							margin = std::min(margin, p.candidates[c].s[0] * (b[0] - a[0]) + p.candidates[c].s[1] * (b[1] - a[1]) - p.candidates[c].spacing);
+						}
+						out += std::format("  - candidate {} s ({},{}) spacing {} rows {} margin on the drawing {}\n", c, p.candidates[c].s[0], p.candidates[c].s[1], p.candidates[c].spacing, p.candidates[c].rows.size(), margin);
+					}
+					for (const PlanarDomainBreak &br : d.breaks) {
+						if (std::ranges::find(br.tracks, p.tracks[0]) == br.tracks.end() && std::ranges::find(br.tracks, p.tracks[1]) == br.tracks.end()) continue;
+						std::string trs;
+						for (const uint32_t t : br.tracks) trs += std::format(" {}", fa.Name(t));
+						out += std::format("  - domain break [{}] tracks{} tile ({}, {}): {}\n", br.rule, trs, br.tile.x, br.tile.y, br.why);
+					}
+				}
+			}
+		}
+		md << out << std::flush;
+		std::cout << out << std::flush;
+	}
+	/* Controls (not elastic, one solve each, 15 s): all rows with grid on (lazy-4's Infeasible), and with grid off. */
+	for (const bool grid : {true, false}) {
+		PlanarDrawOptions o = SlotsOptions(fa, DEFAULT_RULES);
+		o.node_gaps = false;
+		o.grid = grid;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
+		const std::string out = std::format("\n## control: all keep-apart rows, hard, grid {}\n\nstatus {} ms {} binaries {}\n", grid ? "on" : "off", r.status, static_cast<int>(r.ms), r.binaries);
+		md << out << std::flush;
+		std::cout << out << std::flush;
+	}
+}
