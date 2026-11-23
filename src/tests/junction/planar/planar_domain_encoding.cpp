@@ -707,11 +707,12 @@ struct Group {
 };
 
 struct Tally {
-	std::array<uint32_t, 7> counts{}; ///< Polylines: both accept, both reject, too strict, too loose; then off grid geometries, then other shape, then off interface.
-	std::array<uint32_t, 7> geoms{}; ///< The enumerated geometries behind each.
+	std::array<uint32_t, 8> counts{}; ///< Polylines: both accept, both reject, too strict, too loose; then off grid geometries, then other shape, then off interface, then loose off interface (the domain refuses, the full rows refuse, the rows without the interface accept).
+	std::array<uint32_t, 8> geoms{}; ///< The enumerated geometries behind each.
 	std::set<std::string> seen; ///< The polylines counted.
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
+	std::map<std::string, Group> loose_off; ///< Loose off interface (report only), by domain break rules.
 	std::vector<Example> other; ///< The first other shape polylines.
 	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, the full rows reject them, and the read-out without the interface rows, the ports and the box, accepts them); the examples list the full rows' failing rows.
 };
@@ -726,7 +727,7 @@ std::string FamilyOf(const std::string &tag)
 	return tag.substr(0, tag.find(' '));
 }
 
-const char *const CLASS_NAMES[7] = {"both accept", "both reject", "too strict", "too loose", "off grid (geometries)", "other shape", "off interface"};
+const char *const CLASS_NAMES[8] = {"both accept", "both reject", "too strict", "too loose", "off grid (geometries)", "other shape", "off interface", "loose off interface"};
 
 /** A polyline's class and its example text, from the first geometry that had it. */
 struct PolyClass {
@@ -1315,7 +1316,7 @@ RowsJudge DrawingProgramJudge(const std::string &rule_set)
 }
 
 /** Judge a polyline's contracted writing against the domain on a fixture's configurations and write the report. */
-void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const RowsJudge &judge, int *base_verdict = nullptr, std::array<uint32_t, 7> *totals = nullptr)
+void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const RowsJudge &judge, int *base_verdict = nullptr, std::array<uint32_t, 8> *totals = nullptr)
 {
 	REQUIRE((report_path != nullptr || base_verdict != nullptr || totals != nullptr));
 
@@ -1404,7 +1405,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 
 	/** Judge one geometry into the tallies (the class is cached per polyline). */
 	auto judge_one = [&](const Config &cfg, Tally &tally, const Geometry &g, const std::string &varied, const std::vector<Points> &points, bool on_grid) {
-		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE, OFF_INTERFACE } c;
+		enum { BOTH_ACCEPT, BOTH_REJECT, STRICT, LOOSE, OFF_GRID, OTHER_SHAPE, OFF_INTERFACE, LOOSE_OFF } c;
 		std::string pkey;
 		const PolyClass *pc = nullptr;
 		{
@@ -1436,7 +1437,8 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 					} else if (d.legal) {
 						nc.c = accept ? BOTH_ACCEPT : STRICT;
 					} else {
-						nc.c = accept ? LOOSE : BOTH_REJECT;
+						/* Loose off interface: the domain refuses, the full rows refuse, and the rows without the port and box rows accept (report only). */
+						nc.c = accept ? LOOSE : judge(f, *cv, false).accept ? LOOSE_OFF : BOTH_REJECT;
 					}
 					if (nc.c == STRICT) {
 						/* A too-strict polyline is on the grid by definition. */
@@ -1468,7 +1470,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						out << "\n";
 						for (const std::string &b : broken) out << "      port row broken: " << b << "\n";
 						nc.detail = out.str();
-					} else if (nc.c == LOOSE) {
+					} else if (nc.c == LOOSE || nc.c == LOOSE_OFF) {
 						std::set<std::string> broke;
 						std::ostringstream out;
 						out << "      polyline " << pkey << "\n      contracted pieces (heading x length):";
@@ -1521,11 +1523,11 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 				}
 				continue;
 			}
-			Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : nullptr;
+			Group *grp = c == STRICT ? &x->strict[pc->key] : c == LOOSE ? &x->loose[pc->key] : c == LOOSE_OFF ? &x->loose_off[pc->key] : nullptr;
 			if (grp != nullptr) grp->geometries++;
 			if (!x->seen.insert(pkey).second) continue;
 			x->counts[c]++;
-			if (grp != nullptr && grp->count++ < 3) grp->examples.push_back({varied, pc->detail});
+			if (grp != nullptr && grp->count++ < (c == LOOSE_OFF ? 1U : 3U)) grp->examples.push_back({varied, pc->detail});
 		}
 	};
 
@@ -1683,12 +1685,12 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	out << "enumeration wall " << wall << " s\n\n";
 	auto write = [&](const std::string &title, const Tally &t) {
 		out << "== " << title << " ==\n";
-		for (int c = 0; c < 7; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 4 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
+		for (int c = 0; c < 8; c++) out << "  " << CLASS_NAMES[c] << ": " << t.counts[c] << (c == 4 ? "" : " polylines") << " (" << t.geoms[c] << " geometries)\n";
 		for (const Example &e : t.other) out << "    other shape, varied: " << e.varied << "\n" << e.detail;
 		for (const Example &e : t.off_interface) out << "    off interface, varied: " << e.varied << "\n" << e.detail;
-		for (int kind = 0; kind < 2; kind++) {
-			const auto &groups = kind == 0 ? t.strict : t.loose;
-			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : " too loose, by domain break rules:\n");
+		for (int kind = 0; kind < 3; kind++) {
+			const auto &groups = kind == 0 ? t.strict : kind == 1 ? t.loose : t.loose_off;
+			out << (kind == 0 ? " too strict, by the kept values of the failing pairs:\n" : kind == 1 ? " too loose, by domain break rules:\n" : " loose off interface (report only), by domain break rules:\n");
 			for (const auto &[key, grp] : groups) {
 				out << "  [" << key << "] polylines " << grp.count << " (geometries " << grp.geometries << ")\n";
 				for (const Example &e : grp.examples) out << "    varied: " << e.varied << "\n" << e.detail;
@@ -1720,7 +1722,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	if (totals != nullptr) *totals = total.counts;
 	for (const Config &cfg : configs) {
 		const Tally &t = per[cfg.name];
-		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid geometries " << t.counts[4] << ", other shape " << t.counts[5] << " (geometries " << t.geoms[5] << "), off interface " << t.counts[6] << " (geometries " << t.geoms[6] << "), wall " << cfg_wall[cfg.name] << " s");
+		WARN(cfg.name << " (polylines): both accept " << t.counts[0] << ", both reject " << t.counts[1] << ", too strict " << t.counts[2] << ", too loose " << t.counts[3] << ", off grid geometries " << t.counts[4] << ", other shape " << t.counts[5] << " (geometries " << t.geoms[5] << "), off interface " << t.counts[6] << " (geometries " << t.geoms[6] << "), loose off interface " << t.counts[7] << " (geometries " << t.geoms[7] << "), wall " << cfg_wall[cfg.name] << " s");
 	}
 	WARN("enumeration wall " << wall << " s");
 }
@@ -1943,7 +1945,7 @@ TEST_CASE("planar domain: our keep-apart against the domain on X1", "[.][planard
 TEST_CASE("planar domain: X1 is exact under the default rule set", "[junction][planar][planardomainexact]")
 {
 	const X1Fixture f;
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "X1", X1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("X1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2024,7 +2026,7 @@ TEST_CASE("planar domain: X2 is exact under the default rule set", "[junction][p
 {
 	const X2Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "X2", X2Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("X2: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2156,7 +2158,7 @@ TEST_CASE("planar domain: M1 is exact under the default rule set", "[junction][p
 {
 	const M1Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "M1", M1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("M1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2194,7 +2196,7 @@ TEST_CASE("planar domain: K1 is exact under the default rule set", "[junction][p
 {
 	const K1Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "K1", K1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("K1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2345,7 +2347,7 @@ TEST_CASE("planar domain: L1 is exact under the default rule set", "[junction][p
 {
 	const L1Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "L1", L1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("L1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2449,7 +2451,7 @@ TEST_CASE("planar domain: Y1 is exact under the default rule set", "[junction][p
 {
 	const Y1Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "Y1", Y1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("Y1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2541,7 +2543,7 @@ TEST_CASE("planar domain: P1 is exact under the default rule set", "[junction][p
 {
 	const P1Fixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "P1", P1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("P1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
@@ -2622,7 +2624,7 @@ TEST_CASE("planar domain: BR1 is exact under the default rule set", "[junction][
 {
 	const BridgeFixture f;
 	RequireBaseLegal(f);
-	std::array<uint32_t, 7> totals{};
+	std::array<uint32_t, 8> totals{};
 	RunEncoding(f, nullptr, "BR1", BR1Configs(f), "", DrawingProgramJudge(DEFAULT_RULES), nullptr, &totals);
 	INFO("BR1: too strict " << totals[2] << ", too loose " << totals[3]);
 	CHECK(totals[2] == 0);
