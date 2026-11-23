@@ -27,3 +27,4 @@ n1 = D1,D2,A2,B1,F2: Infeasible 133 ms, empty conflict (proved by branching): no
 - T2 stage A with the 159 flank rows (1574 rows): OPTIMAL (feasible) 28.53 s (HiGHS: no incumbent in 15 s).
 
 Reading: a turn-legal S-bend choice EXISTS for T2 (under rows that are, if anything, slightly strict). The trouble is search, not an upstream Shape gap. Grid parity not included (grid off).
+- WITH THE GRID ON (the real use case; parity-substituted export, 1146 variables): control without flank rows OPTIMAL 0.11 s; with the 159 flank rows (1854 rows) OPTIMAL (feasible) 4.60 s. HiGHS on the same model: Error at 15 s (21.9 s).
