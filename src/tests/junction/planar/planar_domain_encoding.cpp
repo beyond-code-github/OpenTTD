@@ -5790,3 +5790,236 @@ TEST_CASE("planar slots: two-stage solve on Shape's variant (D441, D442)", "[.][
 		}
 	}
 }
+
+namespace {
+
+/** D444 lazy trial: one run of rounds over a variant. Each round solves with separation rows only for `list`, then adds the pairs that fail on its points. */
+struct LazyRun {
+	std::vector<std::string> list; ///< The pair tags with rows at the end.
+	bool converged = false;
+	std::string stop; ///< Why the run ended when it did not converge.
+	int rounds = 0;
+	double ms = 0;
+	size_t all_pairs = 0;
+	PlanarDrawResult last; ///< The last Optimal round.
+	std::vector<PlanarKeepApartPair> pairs; ///< The last Optimal round's pairs.
+};
+
+std::string LazyRoundTag(const std::string &tag, const char *stage, int round) { return std::format("{} {} round {}", tag, stage, round); }
+
+LazyRun LazyLoop(const PlanarShapeVariant &v, const PlanarDrawOptions &base, std::vector<std::string> list, const std::string &tag, const char *stage, std::ostream &md)
+{
+	LazyRun run;
+	run.list = std::move(list);
+	for (int round = 0; round < 12; round++) {
+		PlanarDrawOptions o = base;
+		o.keep_apart_out = true;
+		o.only_pairs_on = true;
+		o.only_pairs = run.list;
+		const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, o);
+		run.rounds++;
+		run.ms += r.ms;
+		size_t with_rows = 0, all = 0;
+		std::vector<std::string> failing;
+		for (const PlanarKeepApartPair &p : r.keep_apart) {
+			if (!p.skipped.empty() || p.candidates.empty()) continue;
+			all++;
+			if (std::ranges::find(run.list, p.tag) != run.list.end()) with_rows++;
+		}
+		run.all_pairs = all;
+		if (r.status == "Optimal") {
+			for (const PlanarKeepApartPair &p : r.keep_apart) {
+				if (!p.skipped.empty() || p.candidates.empty()) continue;
+				if (!PlanarKeepApartHolds(p, r.points) && std::ranges::find(run.list, p.tag) == run.list.end()) failing.push_back(p.tag);
+			}
+			run.last = r;
+			run.pairs = r.keep_apart;
+		}
+		const std::string line = std::format("| {} | {} | {} | {} | {} | {} | {} |", stage, round, r.status, static_cast<int>(r.ms), with_rows, r.binaries, r.status == "Optimal" ? std::format("{}", failing.size()) : "-");
+		md << line << "\n" << std::flush;
+		std::cout << LazyRoundTag(tag, stage, round) << ": " << line << "\n" << std::flush;
+		if (r.status != "Optimal") {
+			run.stop = r.status;
+			return run;
+		}
+		if (failing.empty()) {
+			run.converged = true;
+			return run;
+		}
+		for (const std::string &t : failing) run.list.push_back(t);
+	}
+	run.stop = "12 rounds";
+	return run;
+}
+
+}  // namespace
+
+TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymeasure]")
+{
+	const char *hub_env = std::getenv("PLANAR_SLOTS_HUB");
+	const char *cfg_env = std::getenv("PLANAR_LAZY_CFG"); ///< "1" offers 1 d443 off only; "3" offers 3 d443 on only; unset both.
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::ofstream md(std::getenv("PLANAR_LAZY_OUT") != nullptr ? std::getenv("PLANAR_LAZY_OUT") : "lazy-rounds.md", std::ios::app);
+	for (const std::string name : {"T1", "T2"}) {
+		if (hub_env != nullptr && name != hub_env) continue;
+		std::string error, why;
+		const PlanarTopology topology = ParsePlanarTopology(PlanarTText(name[1] - '0'), &error);
+		REQUIRE(error.empty());
+		const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+		REQUIRE(!sr.variants.empty());
+		PlanarShapeVariant base;
+		REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+		for (PlanarShapeTrack &track : base.tracks) {
+			std::vector<uint32_t> middles = track.flex;
+			std::ranges::sort(middles);
+			for (size_t j = middles.size(); j-- > 0;) {
+				const uint32_t m = middles[j];
+				track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+				for (uint32_t &e : track.event_piece) {
+					if (e > m) e -= 2;
+				}
+			}
+			track.flex.clear();
+		}
+		struct Config { int offers; bool d443; };
+		for (const Config cfg : {Config{1, false}, Config{3, true}}) {
+			if (cfg_env != nullptr && std::string(cfg_env) != std::format("{}", cfg.offers)) continue;
+			PlanarShapeVariant v = base;
+			REQUIRE(PlacePlanarShapeFlex(v, why, true, cfg.d443, cfg.offers));
+			size_t flex_pairs = 0;
+			for (const PlanarShapeTrack &t : v.tracks) flex_pairs += t.flex.size();
+			const std::string tag = std::format("LAZY {} offers {} d443 {}", name, cfg.offers, cfg.d443 ? "on" : "off");
+			md << std::format("\n### {} (flex pairs {})\n\n| stage | round | status | ms | pairs with rows | binaries | failing pairs |\n|---|---|---|---|---|---|---|\n", tag, flex_pairs) << std::flush;
+			PlanarDrawOptions o;
+			o.corridor = true;
+			o.clearance = o.clear_rows = o.pairwise = o.pairwise_all_faces = true;
+			o.strict_span = true;
+			o.strict_zero = o.crossing_flanks = false;
+			o.bays = o.curves = false;
+			o.node_lead = o.end_node = o.cross_piece = true;
+			o.tidy = true;
+			o.elastic = false;
+			o.least_extra = 0;
+
+			/* Stage A: uncontracted, integer, grid on, inserts may be 0, no reference (no node gaps). */
+			PlanarDrawOptions sa = o;
+			sa.grid = true;
+			sa.node_gaps = false;
+			const LazyRun a = LazyLoop(v, sa, {}, tag, "A", md);
+			std::string summary = std::format("- {} stage A: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, a.rounds, a.converged, a.stop, a.list.size(), a.all_pairs, static_cast<int>(a.ms));
+			if (a.last.status != "Optimal") {
+				md << "\n" << summary << "- no stage B (stage A never Optimal)\n" << std::flush;
+				continue;
+			}
+
+			/* Stage B: contract from stage A's last Optimal drawing (slots-1's mechanism). */
+			PlanarShapeVariant vc = v;
+			auto points = a.last.points;
+			auto lengths = a.last.lengths;
+			std::set<std::string> seed_keys;
+			std::vector<std::vector<int>> mapped(vc.tracks.size());
+			for (size_t t = 0; t < vc.tracks.size(); t++) {
+				PlanarShapeTrack &track = vc.tracks[t];
+				std::vector<uint32_t> middles = track.flex;
+				std::ranges::sort(middles);
+				std::vector<bool> kept;
+				for (const uint32_t m : middles) kept.push_back(a.last.lengths[t][m] >= 0.5);
+				std::set<uint32_t> removed;
+				for (size_t j = 0; j < middles.size(); j++) {
+					if (!kept[j]) removed.insert(middles[j]);
+				}
+				int out = 0;
+				mapped[t].resize(track.pieces.size());
+				for (uint32_t p = 0; p < track.pieces.size(); p++) {
+					if (removed.contains(p) || (p > 0 && removed.contains(p - 1))) mapped[t][p] = out - 1;
+					else mapped[t][p] = out++;
+				}
+				for (size_t j = middles.size(); j-- > 0;) {
+					if (kept[j]) continue;
+					const uint32_t m = middles[j];
+					track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+					for (uint32_t &e : track.event_piece) {
+						if (e > m) e -= 2;
+					}
+					points[t].erase(points[t].begin() + m, points[t].begin() + m + 2);
+					lengths[t][m - 1] += lengths[t][m] + lengths[t][m + 1];
+					lengths[t].erase(lengths[t].begin() + m, lengths[t].begin() + m + 2);
+				}
+				track.steps.clear();
+				uint32_t gone = 0;
+				for (size_t j = 0; j < middles.size(); j++) {
+					if (kept[j]) track.steps.push_back(middles[j] - 2 * gone);
+					else gone++;
+				}
+				track.flex.clear();
+			}
+			const auto key_of = [](uint32_t t0, uint32_t p0, uint32_t t1, uint32_t p1) {
+				if (std::make_pair(t0, p0) > std::make_pair(t1, p1)) { std::swap(t0, t1); std::swap(p0, p1); }
+				return std::format("{}.{}-{}.{}", t0, p0, t1, p1);
+			};
+			for (const PlanarKeepApartPair &p : a.pairs) {
+				if (std::ranges::find(a.list, p.tag) == a.list.end()) continue;
+				seed_keys.insert(key_of(p.tracks[0], static_cast<uint32_t>(mapped[p.tracks[0]][p.pieces[0]]), p.tracks[1], static_cast<uint32_t>(mapped[p.tracks[1]][p.pieces[1]])));
+			}
+			int biggest = 0;
+			for (const auto &track : points) {
+				for (const auto &p : track) biggest = std::max({biggest, std::abs(p[0]), std::abs(p[1])});
+			}
+			PlanarDrawOptions sb = o;
+			sb.grid = true;
+			sb.node_gaps = true;
+			sb.node_gap_from = &lengths;
+			sb.coord_max = std::max(64, (2 * biggest + 15) / 16 * 16);
+			/* The listing solve: no rows, to read stage B's tags; the seed is stage A's pairs mapped by (track, piece). */
+			PlanarDrawOptions listing = sb;
+			listing.keep_apart_out = true;
+			listing.only_pairs_on = true;
+			const PlanarDrawResult lr = CheckPlanarDrawable(vc, 15.0, listing);
+			std::vector<std::string> seed;
+			for (const PlanarKeepApartPair &p : lr.keep_apart) {
+				if (!p.skipped.empty() || p.candidates.empty()) continue;
+				if (seed_keys.contains(key_of(p.tracks[0], p.pieces[0], p.tracks[1], p.pieces[1]))) seed.push_back(p.tag);
+			}
+			summary += std::format("- stage B seed: {} of stage A's {} pairs map to stage B tags (listing solve status {}, {} ms, not counted)\n", seed.size(), a.list.size(), lr.status, static_cast<int>(lr.ms));
+			const LazyRun b = LazyLoop(vc, sb, seed, tag, "B", md);
+			summary += std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
+			if (b.converged) {
+				X1Fixture f(vc);
+				Contracted cv;
+				cv.v = vc;
+				cv.points = b.last.points;
+				const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(f, cv, true);
+				std::string verdict = std::format("judge {}", jv.accept ? "accept" : "refuse");
+				for (const std::string &rule : jv.rules) verdict += " [" + rule + "]";
+				const RowsVerdict jn = DrawingProgramJudge(DEFAULT_RULES)(f, cv, false);
+				verdict += std::format(" (without interface rows: judge {}", jn.accept ? "accept" : "refuse");
+				for (const std::string &rule : jn.rules) verdict += " [" + rule + "]";
+				verdict += ")";
+				std::vector<std::string> notes;
+				const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(vc, b.last.points, notes));
+				std::set<std::string> breaks;
+				for (const PlanarDomainBreak &br : d.breaks) breaks.insert(br.rule);
+				verdict += std::format("; domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
+				for (const std::string &rule : breaks) verdict += " [" + rule + "]";
+				summary += "- " + verdict + "\n";
+			}
+			/* Control: stage B with every pair's rows (slots-1's stage 2 with sides free), judged the same way. */
+			{
+				const PlanarDrawResult fr = CheckPlanarDrawable(vc, 15.0, sb);
+				std::string verdict = std::format("- control, stage B with all rows: status {} ms {} binaries {}", fr.status, static_cast<int>(fr.ms), fr.binaries);
+				if (fr.status == "Optimal") {
+					X1Fixture f(vc);
+					Contracted cv;
+					cv.v = vc;
+					cv.points = fr.points;
+					const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(f, cv, true);
+					verdict += std::format(" judge {}", jv.accept ? "accept" : "refuse");
+					for (const std::string &rule : jv.rules) verdict += " [" + rule + "]";
+				}
+				summary += verdict + "\n";
+			}
+			md << "\n" << summary << std::flush;
+			std::cout << summary << std::flush;
+		}
+	}
+}
