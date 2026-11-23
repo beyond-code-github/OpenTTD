@@ -29,3 +29,9 @@ Budget: 45 minutes. No solves.
 
 ## 7. Report
 References read; commit; red text; T2 after the fix (green, or the broken tags with causes); `[planardomain]` before/after counts; the `[planardraw]` timing outcome; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
+
+## Run 2 (2026-11-25, after run 1's stop; run 1's edit is uncommitted in the ng2 working tree: keep it, start from it)
+- **Ruling:** the crossing's original point selects the contracted pieces whenever it exists. When the two original event pieces do not meet in one point (a zero-length piece off the other, a crossing moved off its pieces on purpose, as the domain suite's too-strict/too-loose geometries do), fall back to today's selector (the first same-heading pair that touches). Remove run 1's extra nullopt refusal for that case.
+- Then every `[planardomain]` result must equal the baseline (42 passed + 1 expected failure, 5124 assertions), and `[planardraw]`'s "node lead rows on contracted lines" (line ~4304) must pass as before; anything else that changes is a stop.
+- Red: record the T2 case's failure on the pre-fix code by building it once (a WIP commit of your edit, then `git checkout HEAD~1 -- src/tests/junction/planar/planar_domain_encoding.cpp` is NOT allowed; instead: temporarily make the remap use the old selector unconditionally via a local `constexpr bool` you remove before the commit, run, record, flip back).
+- T2 after the fix stays `[!shouldfail]` with its known causes (stage A grid parity, stage A node gaps off: `leg prio:B2`); the commit message says so.
