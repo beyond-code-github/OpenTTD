@@ -1139,6 +1139,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	const bool lead = rules.ends_with("+lead");
 	if (lead) rules.resize(rules.size() - 5);
 	X1Fixture fx = f;
+	fx.options.node_lead = lead;
 	fx.options.end_node = endnode;
 	fx.options.cross_piece = crosspiece;
 	fx.options.grid = grid;
@@ -2012,6 +2013,7 @@ TEST_CASE("planar draw: end runs stay off a node's switch tile", "[junction][pla
 	const auto has = [](const PlanarProgramCheck &c, const std::string &tag) { return std::ranges::find(c.broken, tag) != c.broken.end(); };
 
 	/* Red: without the option no `end 0 node` row exists, so it cannot break. */
+	f.options.end_node = false;
 	const PlanarDrawResult plain = f.ProgramOut();
 	REQUIRE(plain.status == "built");
 	CHECK(!has(CheckPlanarProgramOnPoints(plain.program, points), "end 0 node"));
@@ -2066,6 +2068,7 @@ TEST_CASE("planar draw: a crossing sits on a piece with length", "[junction][pla
 	const auto has = [](const PlanarProgramCheck &c, const std::string &tag) { return std::ranges::find(c.broken, tag) != c.broken.end(); };
 
 	/* Red: without the option no `cross 0 piece` row exists, so it cannot break. */
+	f.options.cross_piece = false;
 	const PlanarDrawResult plain = f.ProgramOut();
 	REQUIRE(plain.status == "built");
 	CHECK(!has(CheckPlanarProgramOnPoints(plain.program, points), "cross 0 piece"));
@@ -2294,6 +2297,31 @@ TEST_CASE("planar domain: X2 loads and its base is legal", "[junction][planar][p
 	const Config none{"base", {}};
 	RunEncoding(f, nullptr, "X2", {none}, "", "span+lead+endnode+crosspiece", &verdict);
 	CHECK(verdict == 0);
+}
+
+TEST_CASE("planar domain: X2's crosser bending at its crossing is accepted under the default rules (D414, D435)", "[junction][planar][planardomain]")
+{
+	const X2Fixture f;
+	INFO(f.log);
+	RequireBaseLegal(f);
+
+	/* The fixture's options with node_lead, end_node and cross_piece left at their defaults, grid on. */
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	PlanarDrawOptions o = f.options;
+	o.grid = true;
+	o.strict_span = o.strict_zero = o.crossing_flanks = false;
+	o.keep_apart_out = true;
+	o.program_out = true;
+	o.build_only = true;
+	const PlanarDrawResult out = CheckPlanarDrawable(plain, 5.0, o);
+	REQUIRE(out.status == "built");
+	CHECK(std::ranges::all_of(out.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv->points); }));
+	const PlanarProgramCheck check = CheckPlanarProgramOnPoints(out.program, cv->points);
+	INFO("first broken row: " << (check.broken.empty() ? std::string("-") : check.broken[0]));
+	CHECK(check.broken.empty());
 }
 
 TEST_CASE("planar domain: our keep-apart against the domain on X2", "[.][planardomainenc]")
