@@ -852,6 +852,7 @@ const std::map<std::string, std::string> RULE_NAMES = {
 	{"box", "box"}, {"bound box", "box"}, {"integer box", "box"},
 	{"corridor", "corridor"},
 	{"leg", "node gap"}, {"leg zero", "node gap"},
+	{"deck", "deck"}, {"node", "node"}, {"order", "port order"}, {"span", "span"},
 	{"piece", "length"}, {"flex", "length"}, {"bound axis", "length"}, {"bound diagonal", "length"},
 };
 
@@ -3670,7 +3671,10 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 
 	/* 4. The domain on V's points. */
 	std::vector<std::string> notes;
-	const PlanarDomainVerdict domain = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+	/* The answer key's end runs: V's tunnel heads are mostly on one-level slopes, portal only, with the tile outside the portal terrain (a dug ramp or lower ground); where V has a ramp its track there is straight anyway. For judging V's build every structure's end run is the portal alone (ends = 1; bridges stay 1). This is the answer key's input only (a copy of the variant, the judge keeps the planner's end run); the planner's end-run rule is the engineer's card (wip/CARD-tunnel-slopes.md, wip/probes/domain/triage-197.md cause A). */
+	PlanarShapeVariant key_variant = f.v;
+	for (auto &structure : key_variant.structures) for (int &run : structure.end_run) if (run > 1) run = 1;
+	const PlanarDomainVerdict domain = CheckPlanarDomain(PlanarDomainInputOf(key_variant, points, notes));
 	out << "domain on V's points: " << (domain.legal ? "legal" : "NOT legal") << ", " << domain.breaks.size() << " breaks, " << notes.size() << " notes\n";
 	for (const std::string &m : notes) out << "  note: " << m << "\n";
 	std::map<std::string, size_t> domain_by_rule;
@@ -3736,7 +3740,7 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 	const auto refuse = [&](const std::string &rule, const std::string &row) {
 		Refusal &r = refusals[rule];
 		r.count++;
-		if (r.first.size() < 10) r.first.push_back(row);
+		r.first.push_back(row);
 	};
 	for (const PlanarKeepApartPair &pair : ro.keep.keep_apart) {
 		if (pair.skipped.empty()) written[RuleOf(pair.tag)]++;
@@ -3754,6 +3758,160 @@ TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.
 	}
 	for (const PlanarProgram::Row &row : ro.program.program.rows) written[RuleOf(row.tag)]++;
 	for (const std::string &tag : CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken) refuse(RuleOf(tag), tag);
+	/* Diagnostic (domain-41): every refusing row on V's points with its terms and values, for the triage (wip/probes/domain/triage-197-judge.md). Points are in half tiles, the box low corner moved to 0; game tile = point / 2 + (78, 137). */
+	const auto judge_rows = [&](const Contracted &c, const Readouts &r, const std::string &label) {
+		/* Diagnostic (domain-41): every refusing row on V's points with its terms and values, for the triage (wip/probes/domain/triage-197-judge.md). Points are in half tiles, the box low corner moved to 0; game tile = point / 2 + (78, 137). */
+		std::ostringstream jo;
+		jo << "== " << label << "\n";
+		const auto pt = [&](const std::array<uint32_t, 2> &tp) {
+			const auto &q = c.points[tp[0]][tp[1]];
+			return std::format("{}#{}({},{})", f.Name(tp[0]), tp[1], q[0], q[1]);
+		};
+		for (const PlanarKeepApartPair &pair : r.keep.keep_apart) {
+			if (PlanarKeepApartHolds(pair, c.points)) continue;
+			jo << pair.tag << " tracks " << f.Name(pair.tracks[0]) << "," << f.Name(pair.tracks[1]) << " pieces " << pair.pieces[0] << "," << pair.pieces[1] << " skipped '" << pair.skipped << "'\n";
+			for (const auto &cand : pair.candidates) {
+				jo << "  cand s(" << cand.s[0] << "," << cand.s[1] << ") spacing " << cand.spacing << ":";
+				for (const auto &r : cand.rows) {
+					const auto &a = c.points[r.p[0]][r.p[1]], &b = c.points[r.q[0]][r.q[1]];
+					jo << " [" << pt(r.q) << "-" << pt(r.p) << " -> " << cand.s[0] * (b[0] - a[0]) + cand.s[1] * (b[1] - a[1]) << "]";
+				}
+				jo << "\n";
+			}
+		}
+		for (const PlanarPointRow &row : r.lead) {
+			if (PlanarPointRowHolds(row, c.points)) continue;
+			long sum = 0;
+			jo << row.tag << ":";
+			for (const auto &term : row.terms) {
+				const auto &q = c.points[term.point[0]][term.point[1]];
+				sum += term.c[0] * q[0] + term.c[1] * q[1];
+				jo << " c(" << term.c[0] << "," << term.c[1] << ")*" << pt(term.point);
+			}
+			jo << " sum " << sum << " least " << row.least << "\n";
+		}
+		/* The program on V's points: solve the determined variables (equality rows with one unknown, or two rows sharing the same two unknowns), then evaluate each row of a refusing tag. */
+		const PlanarProgram &prog = r.program.program;
+		const size_t nv = prog.lower.size();
+		std::vector<double> val(nv, 0);
+		std::vector<bool> known(nv, false);
+		for (size_t t = 0; t < prog.point.size() && t < c.points.size(); t++) {
+			for (size_t i = 0; i < prog.point[t].size() && i < c.points[t].size(); i++) {
+				for (int axis = 0; axis < 2; axis++) {
+					val[prog.point[t][i][axis]] = c.points[t][i][axis];
+					known[prog.point[t][i][axis]] = true;
+				}
+			}
+		}
+		for (bool changed = true; changed;) {
+			changed = false;
+			std::map<std::pair<uint32_t, uint32_t>, std::vector<size_t>> pairs;
+			for (size_t ri = 0; ri < prog.rows.size(); ri++) {
+				const auto &r = prog.rows[ri];
+				if (r.lower != r.upper) continue;
+				std::vector<uint32_t> unk;
+				for (const auto &[x, c] : r.terms) if (!known[x] && c != 0 && std::ranges::find(unk, x) == unk.end()) unk.push_back(x);
+				if (unk.size() == 1) {
+					double rest = r.lower, coef = 0;
+					for (const auto &[x, c] : r.terms) { if (x == unk[0]) coef += c; else rest -= c * val[x]; }
+					val[unk[0]] = rest / coef;
+					known[unk[0]] = true;
+					changed = true;
+				} else if (unk.size() == 2) {
+					std::ranges::sort(unk);
+					pairs[{unk[0], unk[1]}].push_back(ri);
+				}
+			}
+			if (changed) continue;
+			for (const auto &[ab, rs] : pairs) {
+				if (rs.size() < 2) continue;
+				double c1[2] = {0, 0}, c2[2] = {0, 0}, r1 = prog.rows[rs[0]].lower, r2 = prog.rows[rs[1]].lower;
+				for (const auto &[x, c] : prog.rows[rs[0]].terms) { if (x == ab.first) c1[0] += c; else if (x == ab.second) c1[1] += c; else r1 -= c * val[x]; }
+				for (const auto &[x, c] : prog.rows[rs[1]].terms) { if (x == ab.first) c2[0] += c; else if (x == ab.second) c2[1] += c; else r2 -= c * val[x]; }
+				const double det = c1[0] * c2[1] - c2[0] * c1[1];
+				if (std::abs(det) < 1e-9) continue;
+				val[ab.first] = (r1 * c2[1] - r2 * c1[1]) / det;
+				val[ab.second] = (c1[0] * r2 - c2[0] * r1) / det;
+				known[ab.first] = known[ab.second] = true;
+				changed = true;
+				break;
+			}
+		}
+		const std::set<std::string> broken = [&]() {
+			const auto b = CheckPlanarProgramOnPoints(prog, c.points).broken;
+			return std::set<std::string>(b.begin(), b.end());
+		}();
+		for (const PlanarProgram::Row &r : prog.rows) {
+			if (!broken.contains(r.tag)) continue;
+			double sum = 0;
+			bool all = true;
+			std::string terms;
+			for (const auto &[x, c] : r.terms) {
+				all = all && known[x];
+				sum += c * val[x];
+				terms += std::format(" {}*{}[{}{}]", c, val[x], prog.group[x], known[x] ? "" : " UNKNOWN");
+			}
+			if (all && sum >= r.lower - 1e-6 && sum <= r.upper + 1e-6) continue;
+			jo << r.tag << ":" << terms << " sum " << sum << " in [" << r.lower << ", " << r.upper << "]\n";
+			if (r.tag.starts_with("deck ") || r.tag.starts_with("order ")) {
+				/* The crossings whose parameters are the row's variables (the `cross <c>` rows that hold them, through the grid link). */
+				for (const auto &[x, coef] : r.terms) {
+					jo << "    var " << x << " in:";
+					for (const auto &other : prog.rows) {
+						if (!other.tag.starts_with("cross ") && !other.tag.starts_with("grid link")) continue;
+						if (!std::ranges::any_of(other.terms, [&](const auto &t) { return t.first == x; })) continue;
+						jo << " {" << other.tag;
+						if (other.tag.starts_with("cross ") && other.tag.find("piece") == std::string::npos) {
+							uint32_t cr = UINT32_MAX;
+							std::from_chars(other.tag.data() + 6, other.tag.data() + other.tag.size(), cr);
+							if (cr < c.v.structure.map.crossings.size()) jo << " = " << f.Name(c.v.structure.map.crossings[cr].a) << "x" << f.Name(c.v.structure.map.crossings[cr].b);
+						}
+						jo << "}";
+					}
+					jo << "\n";
+				}
+			}
+		}
+		for (size_t x = 0; x < nv; x++) {
+			if (!known[x]) continue;
+			const bool low = val[x] < prog.lower[x] - 1e-6 || val[x] > prog.upper[x] + 1e-6;
+			const bool frac = prog.integer[x] && std::abs(val[x] - std::round(val[x])) > 1e-6;
+			if (!low && !frac) continue;
+			if (broken.contains((low ? "bound " : "integer ") + prog.group[x]) || broken.contains("integer " + prog.group[x]) || broken.contains("bound " + prog.group[x])) {
+				jo << "var " << x << " group " << prog.group[x] << " value " << val[x] << (low ? " out of bounds" : " not integer") << " [" << prog.lower[x] << ", " << prog.upper[x] << "]; in rows:";
+				for (const auto &r : prog.rows) if (std::ranges::any_of(r.terms, [&](const auto &t) { return t.first == x; })) jo << " {" << r.tag << "}";
+				jo << "\n";
+			}
+		}
+		for (const uint32_t n : {47u, 61u}) {
+			jo << "node " << n << " lines";
+			for (uint32_t t = 0; t < c.v.structure.map.expanded.lines.size(); t++) {
+				const PlanarLine &ln = c.v.structure.map.expanded.lines[t];
+				if ((!ln.from.port && ln.from.index == n) || (!ln.to.port && ln.to.index == n)) jo << " " << f.Name(t) << ((!ln.from.port && ln.from.index == n) ? "(from)" : "(to)");
+			}
+			jo << "\n";
+		}
+		for (size_t k = 0; k < c.v.structure.structures.size(); k++) {
+			const PlanarStructure &st = c.v.structure.structures[k];
+			const std::string deck = std::format("deck {}", k), end = std::format("end {}", k);
+			if (!broken.contains(deck) && !broken.contains(end) && !broken.contains(end + " node")) continue;
+			jo << "structure " << k << " separator " << f.Name(st.separator) << " kinds " << static_cast<int>(st.kinds) << " limit " << st.limit[0] << "," << st.limit[1] << " end_run " << c.v.structures[k].end_run[0] << "," << c.v.structures[k].end_run[1] << " crossers";
+			for (const uint32_t c : st.crossers) jo << " " << f.Name(c);
+			jo << "; separator points";
+			for (const auto &q : c.points[st.separator]) jo << " (" << q[0] << "," << q[1] << ")";
+			jo << "\n";
+		}
+		return jo.str();
+	};
+	if (const char *judge_env = std::getenv("PLANAR_DOMAIN_JUDGE_197"); judge_env != nullptr) {
+		std::string text = judge_rows(*cv, ro, "judge as it is (planner end runs)");
+		/* The counterfactual: every structure's end run 1 in the judge (the answer key's end run), the rest unchanged. */
+		Contracted portal = *cv;
+		for (auto &structure : portal.v.structures) for (int &run : structure.end_run) if (run > 1) run = 1;
+		judge(f, portal, true);
+		text += judge_rows(portal, g_last_readouts, "judge with end run 1 (counterfactual)");
+		std::ofstream(judge_env) << text;
+	}
 	out << "judge (default rules, interface rows): " << (full.accept ? "ACCEPT" : "REFUSE") << "\n";
 	for (const std::string &rule : full.rules) out << "  rule named: " << rule << "\n";
 	for (const auto &[rule, r] : refusals) {
