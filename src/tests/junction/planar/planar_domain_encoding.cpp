@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <climits>
 #include <cstdlib>
@@ -3502,4 +3503,244 @@ TEST_CASE("planar draw: the corridor family is what breaks a copy one lane furth
 	CHECK(std::ranges::any_of(BrokenOnOwnBranches(moved, f.base, true, true), is_corridor));
 	moved.options.corridor = false;
 	CHECK_FALSE(std::ranges::any_of(BrokenOnOwnBranches(moved, f.base, true, true), is_corridor));
+}
+
+namespace {
+
+/** The extractor's PSG 197 text file, empty when missing. */
+std::string Read197File(const std::string &name)
+{
+	std::ifstream file(std::string(JUNCTION_TOPOLOGY_DIR) + "/../corpus/out/psg197/" + name);
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	return buffer.str();
+}
+
+} // namespace
+
+TEST_CASE("planar domain: V's PSG 197 judged by the behaviour (answer key)", "[.][planardomain197]")
+{
+	const char *report_env = std::getenv("PLANAR_DOMAIN_REPORT_197");
+	const std::filesystem::path report_path = report_env != nullptr ? report_env : "docs/junction-tool/wip/probes/domain/answerkey-197.txt";
+	std::ostringstream out;
+
+	/* 1. Load 197 (topology, structure, shape, flex), no cell refinement. */
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(Read197File("topology.txt"), &error);
+	REQUIRE(error.empty());
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::vector<std::string> report;
+	const PlanarStructureVariant structure = LoadPlanarStructureVariant(topology, Read197File("structure.txt"), spec, report, &error);
+	REQUIRE(error.empty());
+	PlanarShapeVariant shaped;
+	REQUIRE(LoadPlanarShapeVariant(topology, structure, Read197File("shape.txt"), shaped, why));
+	const PlanarTrackMap &map = shaped.structure.map;
+	const size_t nt = shaped.tracks.size();
+	const PlanarDrawPins pins = ParsePlanarDrawPins(shaped, Read197File("pins.txt"));
+
+	/* 2. V's points per track: start pin, then V's piece lengths along the raw headings. */
+	std::map<std::string, std::vector<int>> lengths;
+	{
+		std::istringstream in(Read197File("lengths.txt"));
+		std::string text;
+		while (std::getline(in, text)) {
+			if (!text.starts_with("lengths ")) continue;
+			const size_t colon = text.find(':');
+			std::istringstream ls(text.substr(colon + 1));
+			std::vector<int> &l = lengths[text.substr(8, colon - 8)];
+			int x;
+			while (ls >> x) l.push_back(x);
+		}
+	}
+	/* The raw shape: shape.txt's headings and event pieces, each stretch that steps.txt lists replaced by its raw heading list (consecutive stretches share their event piece, kept once). */
+	std::map<std::pair<std::string, size_t>, std::vector<int>> step_lists;
+	{
+		std::istringstream in(Read197File("steps.txt"));
+		std::string text;
+		while (std::getline(in, text)) {
+			if (!text.starts_with("step ")) continue;
+			const size_t hash = text.find(" # ");
+			std::istringstream ls(text.substr(5, hash == std::string::npos ? std::string::npos : hash - 5));
+			std::string name;
+			size_t k;
+			char colon;
+			ls >> name >> k >> colon;
+			std::vector<int> &h = step_lists[{name, k}];
+			int x;
+			while (ls >> x) h.push_back(x);
+		}
+	}
+	PlanarShapeVariant raw = shaped;
+	std::map<size_t, std::string> unmapped; ///< Track to reason.
+	for (size_t t = 0; t < nt; t++) {
+		const std::string &name = map.tracks[t].name;
+		const PlanarShapeTrack &track = shaped.tracks[t];
+		std::string reason;
+		if (map.tracks[t].kind != PlanarTrack::Kind::Line) reason = "not a line";
+		else if (!lengths.contains(name)) reason = "no lengths.txt entry";
+		if (reason.empty()) {
+			const std::vector<int> &h = track.pieces;
+			const std::vector<uint32_t> &ev = track.event_piece;
+			std::vector<int> pieces;
+			std::vector<uint32_t> events;
+			for (size_t k = 0; k <= ev.size(); k++) {
+				const size_t first = k == 0 ? 0 : ev[k - 1], last = k == ev.size() ? h.size() - 1 : ev[k];
+				std::vector<int> list;
+				const auto it = step_lists.find({name, k});
+				if (it != step_lists.end()) {
+					list = it->second;
+					const int offset = h[first] - list[0];
+					for (int &x : list) x += offset;
+				} else {
+					list.assign(h.begin() + first, h.begin() + last + 1);
+				}
+				if (k > 0) list.erase(list.begin());
+				pieces.insert(pieces.end(), list.begin(), list.end());
+				if (k < ev.size()) events.push_back(static_cast<uint32_t>(pieces.size() - 1));
+			}
+			raw.tracks[t].pieces = pieces;
+			raw.tracks[t].event_piece = events;
+			raw.tracks[t].flex.clear();
+			raw.tracks[t].steps.clear();
+			if (pieces.size() != lengths[name].size()) reason = std::format("raw heading list has {} pieces, lengths.txt {}", pieces.size(), lengths[name].size());
+		}
+		if (reason.empty() && std::ranges::none_of(pins.pins, [&](const PlanarDrawPins::Pin &p) { return !p.cross && p.track == t && p.start; })) reason = "no start pin";
+		if (!reason.empty()) unmapped[t] = reason;
+	}
+	out << "tracks " << nt << " mapped " << nt - unmapped.size() << " unmapped " << unmapped.size() << "\n";
+	for (const auto &[t, reason] : unmapped) out << "unmapped " << t << " " << map.tracks[t].name << ": " << reason << "\n";
+	const auto finish = [&]() {
+		std::filesystem::create_directories(report_path.parent_path());
+		std::ofstream(report_path) << out.str();
+		INFO(out.str());
+	};
+	if (!unmapped.empty()) {
+		finish();
+		FAIL("tracks not carried by the raw variant");
+	}
+
+	/* The box's low corner moves to 0 (the existing 197 test's rule): a W or N port's end pins hold the edge, else the least pin. */
+	std::array<int, 2> low = {INT_MAX, INT_MAX};
+	std::array<bool, 2> edge_port = {false, false};
+	for (size_t p = 0; p < map.expanded.ports.size(); p++) {
+		const PlanarSide side = map.expanded.ports[p].side;
+		if (side != PlanarSide::W && side != PlanarSide::N) continue;
+		const int axis = side == PlanarSide::W ? 0 : 1;
+		for (const uint32_t line : map.expanded.ports[p].lines) {
+			const PlanarEnd &from = map.expanded.lines[line].from;
+			const bool at_start = from.port && from.index == p;
+			for (const PlanarDrawPins::Pin &pin : pins.pins) {
+				if (pin.cross || pin.track != line || pin.start != at_start) continue;
+				low[axis] = std::min(low[axis], pin.at[axis]);
+				edge_port[axis] = true;
+			}
+		}
+	}
+	for (int axis = 0; axis < 2; axis++) {
+		if (edge_port[axis]) continue;
+		for (const PlanarDrawPins::Pin &pin : pins.pins) low[axis] = std::min(low[axis], pin.at[axis]);
+	}
+	for (int &c : low) c -= c & 1; // An even shift: the grid's parity (edge midpoints) is kept.
+	out << "box low corner, rounded down to even (" << low[0] << ", " << low[1] << ")\n";
+
+	/* The fixture on the raw variant: V's headings, start pins and lengths. */
+	X1Fixture f(raw);
+	std::map<std::string, std::vector<int>> heads;
+	Geometry base;
+	for (uint32_t t = 0; t < f.n; t++) {
+		const std::string &key = f.Name(t);
+		heads[key] = raw.tracks[t].pieces;
+		const std::vector<int> &l = lengths[map.tracks[t].name];
+		for (uint32_t k = 0; k < l.size(); k++) base[key][k] = l[k];
+		const auto it = std::ranges::find_if(pins.pins, [&](const PlanarDrawPins::Pin &p) { return !p.cross && p.track == t && p.start; });
+		f.starts[key] = {it->at[0] - low[0], it->at[1] - low[1]};
+	}
+	f.SetUp(heads, base);
+	bool connected = false;
+	f.StartsOf(f.base, &connected);
+	const std::vector<Points> points = f.PointsOf(f.base);
+	size_t end_mismatch = 0;
+	for (const PlanarDrawPins::Pin &pin : pins.pins) {
+		if (pin.cross || pin.start) continue;
+		if (points[pin.track].back() != Point{pin.at[0] - low[0], pin.at[1] - low[1]}) end_mismatch++;
+	}
+	size_t raw_piece_count = 0;
+	for (const PlanarShapeTrack &tr : raw.tracks) raw_piece_count += tr.pieces.size();
+	out << "geometry connected at the nodes: " << (connected ? "yes" : "NO") << "; end pins not met: " << end_mismatch << "\n";
+
+	/* 4. The domain on V's points. */
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict domain = CheckPlanarDomain(PlanarDomainInputOf(f.v, points, notes));
+	out << "domain on V's points: " << (domain.legal ? "legal" : "NOT legal") << ", " << domain.breaks.size() << " breaks, " << notes.size() << " notes\n";
+	for (const std::string &m : notes) out << "  note: " << m << "\n";
+	std::map<std::string, size_t> domain_by_rule;
+	for (const PlanarDomainBreak &b : domain.breaks) domain_by_rule[b.rule]++;
+	for (const auto &[rule, count] : domain_by_rule) out << "  domain rule " << rule << ": " << count << "\n";
+	for (size_t i = 0; i < domain.breaks.size() && i < 20; i++) {
+		const PlanarDomainBreak &b = domain.breaks[i];
+		out << "  break " << b.rule << " tile (" << b.tile.x << "," << b.tile.y << ") tracks";
+		for (const uint32_t t : b.tracks) out << " " << f.Name(t);
+		out << ": " << b.why << "\n";
+	}
+
+	/* The contracted variant and the judge. */
+	const std::optional<Contracted> cv = ContractedVariant(f, f.base);
+	if (!cv) {
+		out << "ContractedVariant: none (a run has no representation or a crossing no piece with Shape's heading)\n";
+		finish();
+		FAIL("no contracted variant");
+	}
+	size_t contracted_pieces = 0;
+	for (const PlanarShapeTrack &tr : cv->v.tracks) contracted_pieces += tr.pieces.size();
+	out << "counts: tracks " << nt << ", raw pieces " << raw_piece_count << ", contracted pieces " << contracted_pieces << ", unmapped 0; contraction moved " << g_turn_moved << ", turn-rejected " << g_turn_rejected << "\n";
+
+	const RowsJudge judge = DrawingProgramJudge(DEFAULT_RULES);
+	const RowsVerdict full = judge(f, *cv, true);
+	const Readouts ro = g_last_readouts;
+	struct Refusal {
+		size_t count = 0;
+		std::vector<std::string> first;
+	};
+	std::map<std::string, Refusal> refusals;
+	std::map<std::string, size_t> written;
+	const auto name_list = [&](const std::vector<uint32_t> &ts) {
+		std::string s;
+		for (const uint32_t t : ts) s += (s.empty() ? "" : ",") + f.Name(t);
+		return s;
+	};
+	const auto refuse = [&](const std::string &rule, const std::string &row) {
+		Refusal &r = refusals[rule];
+		r.count++;
+		if (r.first.size() < 10) r.first.push_back(row);
+	};
+	for (const PlanarKeepApartPair &pair : ro.keep.keep_apart) {
+		if (pair.skipped.empty()) written[RuleOf(pair.tag)]++;
+		if (!PlanarKeepApartHolds(pair, cv->points)) refuse(RuleOf(pair.tag), pair.tag + " [tracks " + name_list({pair.tracks[0], pair.tracks[1]}) + "]");
+	}
+	for (const PlanarPointRow &row : ro.lead) {
+		written[RuleOf(row.tag)]++;
+		if (!PlanarPointRowHolds(row, cv->points)) {
+			std::vector<uint32_t> ts;
+			for (const auto &term : row.terms) ts.push_back(term.point[0]);
+			std::ranges::sort(ts);
+			ts.erase(std::unique(ts.begin(), ts.end()), ts.end());
+			refuse(RuleOf(row.tag), row.tag + " [tracks " + name_list(ts) + "]");
+		}
+	}
+	for (const PlanarProgram::Row &row : ro.program.program.rows) written[RuleOf(row.tag)]++;
+	for (const std::string &tag : CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken) refuse(RuleOf(tag), tag);
+	out << "judge (default rules, interface rows): " << (full.accept ? "ACCEPT" : "REFUSE") << "\n";
+	for (const std::string &rule : full.rules) out << "  rule named: " << rule << "\n";
+	for (const auto &[rule, r] : refusals) {
+		out << "  refusing rule " << rule << ": " << r.count << " rows\n";
+		for (const std::string &row : r.first) out << "    " << row << "\n";
+	}
+	out << "rows written per rule (V's places that exercise it: keep-apart pairs with rows, lead rows, program rows by tag family):\n";
+	for (const auto &[rule, count] : written) out << "  " << rule << ": " << count << "\n";
+	const RowsVerdict off = judge(f, *cv, false);
+	out << "judge off-interface counterfactual (no port and box rows): " << (off.accept ? "ACCEPT" : "REFUSE") << "\n";
+	for (const std::string &rule : off.rules) out << "  rule named: " << rule << "\n";
+
+	finish();
+	CHECK(true);
 }
