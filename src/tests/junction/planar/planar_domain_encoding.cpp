@@ -868,7 +868,7 @@ std::string RuleOf(const std::string &tag)
 	return it == RULE_NAMES.end() ? "other " + family : it->second;
 }
 
-/** F6: at every node, each leg's heading at the node and the trunk's differ by at most one eighth (the contracted turn rule, F3, through nodes). */
+/** F6 and F8: at every node, each leg's heading at the node and the trunk's differ by at most one eighth (the contracted turn rule, F3, through nodes; F6), and no two legs of the node share a heading (the node shape, D400; F8). */
 bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
 {
 	const auto &map = f.v.structure.map;
@@ -936,6 +936,15 @@ bool NodeTurnsHold(const X1Fixture &f, const Contracted &cv)
 		if (site.ending.empty() || site.starting.empty()) continue;
 		const bool trunk_ends = site.ending.size() == 1 && site.starting.size() > 1;
 		const uint32_t trunk = trunk_ends ? site.ending[0] : site.starting[0];
+		/* F8: the legs' headings at the node are pairwise distinct (a zero leg is skipped). */
+		std::set<int> leg_headings;
+		for (const bool arriving : {true, false}) {
+			for (const uint32_t t : arriving ? site.ending : site.starting) {
+				if (t == trunk || zero(t)) continue;
+				const int h = heading(n, t, arriving);
+				if (h >= 0 && !leg_headings.insert(h).second) return false;
+			}
+		}
 		const std::optional<int> trunk_h = trunk_heading(n, trunk, trunk_ends, 0);
 		if (!trunk_h) continue;
 		if (*trunk_h < 0) return false;
@@ -2503,6 +2512,27 @@ TEST_CASE("planar domain: P1's base turns at most one eighth at its node (F6)", 
 	const std::optional<Contracted> base = ContractedVariant(f, f.base);
 	REQUIRE(base.has_value());
 	CHECK_FALSE(DrawingProgramJudge(DEFAULT_RULES)(f, *base, true).rules.contains("node turn"));
+}
+
+TEST_CASE("planar domain: sibling legs arriving on one heading are refused (F8)", "[junction][planar][planardomain]")
+{
+	/* F8: on P1 the lane A1#3 is 32 half tiles, the row A1#4 28 and C1's heading-2 piece 8 is 22: the geometry is connected and C1 runs ON the lane A1#3 along y = 3 into their merge (node 0). The domain refuses (`connection`: the track ends meet with no node). Both legs of the merge arrive with heading 2 after contraction, and their walls are consecutive in the face walk, so keep-apart never pairs them: the node shape (D400) refuses it, legs of one node keep distinct headings. */
+	const P1Fixture f;
+	Geometry g = f.base;
+	g["A1#3"] = {{0, 32}};
+	g["A1#4"] = {{0, 28}};
+	g["C1"] = {{8, 22}};
+	const std::optional<Contracted> cv = ContractedVariant(f, g);
+	REQUIRE(cv.has_value());
+	const Verdicts v = VerdictsOf(f, g, DrawingProgramJudge(DEFAULT_RULES));
+	INFO("refused by " << Join(v.rules));
+	CHECK_FALSE(v.domain);
+	CHECK(v.rows == 1);
+	CHECK(v.rules.contains("node turn"));
+	/* The base C1's last contracted piece is one eighth off A1#3's; judge and domain accept. */
+	const Verdicts base = VerdictsOf(f, f.base, DrawingProgramJudge(DEFAULT_RULES));
+	CHECK(base.domain);
+	CHECK(base.rows == 0);
 }
 
 TEST_CASE("planar domain: P1 loads, has a prio row and its base is legal", "[junction][planar][planardomain]")
