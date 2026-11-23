@@ -252,6 +252,17 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 		return nullptr;
 	};
 
+	/* The structure whose end piece is the piece, or nullptr. */
+	const auto head_of = [&](const PieceRef &r) -> const PlanarDomainStructure * {
+		for (const PlanarDomainStructure *st : structures) {
+			if (st->separator != r.track) continue;
+			if (r.index < st->first + st->ends || r.index + st->ends > st->last) {
+				if (r.index >= st->first && r.index <= st->last) return st;
+			}
+		}
+		return nullptr;
+	};
+
 	/* 3. Connections and nodes. */
 	std::map<Point, std::vector<End>> ends;
 	for (uint32_t t = 0; t < track_count; t++) {
@@ -340,7 +351,18 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 		for (const PieceRef &r : list) tracks_here.push_back(r.track);
 		for (size_t a = 0; a < list.size(); a++) {
 			const PieceRef &p = list[a];
-			if (kind_of(p) == Kind::Head && list.size() > 1) breaks.Add("head", tracks_here, tile, fmt::format("an end piece on tile ({}, {}) shares it with another piece", tile.x, tile.y));
+			/* A tunnel's end piece may share its tile with tunnel middles only: the lower tunnel passes beneath the portal. */
+			bool head_clash = false;
+			if (kind_of(p) == Kind::Head && list.size() > 1) {
+				const PlanarDomainStructure *own = head_of(p);
+				head_clash = own == nullptr || !own->tunnel;
+				for (const PieceRef &q : list) {
+					if (q.track == p.track && q.index == p.index) continue;
+					const PlanarDomainStructure *m = middle_of(q);
+					if (m == nullptr || !m->tunnel) head_clash = true;
+				}
+			}
+			if (head_clash) breaks.Add("head", tracks_here, tile, fmt::format("an end piece on tile ({}, {}) shares it with another piece", tile.x, tile.y));
 			const PlanarDomainStructure *deck = middle_of(p);
 			for (size_t b = a + 1; b < list.size(); b++) {
 				const PieceRef &q = list[b];
@@ -365,9 +387,9 @@ PlanarDomainVerdict CheckPlanarDomain(const PlanarDomainInput &input)
 			if (!usable(c)) continue;
 			bool crosses = false;
 			for (uint32_t i = 0; i < rasters[c].pieces.size() && !crosses; i++) {
-				/* A tunnel's middle crosses a tunnel's middle by depth (D390 (2)); bridge over bridge stays refused. */
-				const PlanarDomainStructure *under_middle = kinds[c][i] == Kind::Middle ? middle_of({c, i}) : nullptr;
-				if (kinds[c][i] != Kind::Ground && !(st->tunnel && under_middle != nullptr && under_middle->tunnel)) continue;
+				/* A tunnel's middle or end piece crosses a tunnel's middle by depth (D390 (2)); bridges stay refused. */
+				const PlanarDomainStructure *over = kinds[c][i] == Kind::Middle ? middle_of({c, i}) : kinds[c][i] == Kind::Head ? head_of({c, i}) : nullptr;
+				if (kinds[c][i] != Kind::Ground && !(st->tunnel && over != nullptr && over->tunnel)) continue;
 				for (uint32_t m = st->first + st->ends; m + st->ends <= st->last && !crosses; m++) {
 					crosses = SameTile(rasters[c].pieces[i].tile, rasters[st->separator].pieces[m].tile);
 				}

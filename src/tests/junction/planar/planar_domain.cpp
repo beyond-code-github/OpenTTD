@@ -298,6 +298,28 @@ TEST_CASE("planar domain: hand cases from the game", "[junction][planar][planard
 		ExpectLegal(input);
 	}
 
+	SECTION("8d legal: a tunnel head above another tunnel's middle, listed under the lower tunnel (D390 (2), D393; V's PSG 197 L11/L47, game tile (92,171))") {
+		const Laid lower = Lay({0, 2}, Trackdir::X_SW, "FFT2FF");
+		const Laid upper = Lay({4, 0}, Trackdir::Y_SE, "FT2F");
+		/* The upper tunnel's first end piece is on the lower tunnel's middle tile (4, 2). */
+		const size_t head = StructureOn(upper, 1, true, {}).first;
+		REQUIRE(upper.raster.pieces[head].tile.x == 4);
+		REQUIRE(upper.raster.pieces[head].tile.y == 2);
+		PlanarDomainInput input;
+		input.tracks = {lower.points, upper.points};
+		input.structures = {StructureOn(lower, 0, true, {1}), StructureOn(upper, 1, true, {})};
+		ExpectLegal(input);
+	}
+
+	SECTION("8e illegal: a bridge head on another bridge's deck tile stays refused") {
+		const Laid lower = Lay({0, 2}, Trackdir::X_SW, "FFB2FF");
+		const Laid upper = Lay({4, 0}, Trackdir::Y_SE, "FB2F");
+		PlanarDomainInput input;
+		input.tracks = {lower.points, upper.points};
+		input.structures = {StructureOn(lower, 0, false, {1}), StructureOn(upper, 1, false, {})};
+		ExpectBreaks(input, {"head", "missing crossing"});
+	}
+
 	SECTION("8c illegal: a listed crossing between two bridges' middles stays refused") {
 		const Laid a = Lay({0, 2}, Trackdir::X_SW, "FFB2FF");
 		const Laid b = Lay({4, -1}, Trackdir::Y_SE, "FB2F");

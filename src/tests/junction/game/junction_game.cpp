@@ -1672,3 +1672,54 @@ TEST_CASE("domain pin 8 (D390 (2)): two tunnels at different depths cross on one
 	input.structures = {x, y};
 	CHECK(DomainRules(input).empty());
 }
+
+TEST_CASE("domain pin 8b (D390 (2), D393): a tunnel's portal tile lies above another tunnel's middle; the domain allows it", "[junction][junctiongame][planardomaingame]")
+{
+	JunctionGameWorld world;
+	/* Ground at height 4. The X tunnel along row 4 runs at level 3 (portal outer corners lowered to 3): its east portal tile is c + 1. The Y tunnel along column c + 1 has its middle under that portal tile. Built with the Y tunnel at `y_level` (portal outer corners lowered to it, the inner ones to 3 when it is 2; unchanged at 3 and above): V's PSG 197 L11/L47 has a head at game (92,171) over L47's middle. */
+	const int c = 4, row = 4;
+	const auto build = [&](int y_level, CommandCost &x_tunnel, CommandCost &y_tunnel) {
+		PrepareDomainMap();
+		for (int dy : {0, 1}) {
+			SetTileHeight(DomainTile(c - 1, row + dy), 3);
+			SetTileHeight(DomainTile(c + 2, row + dy), 3);
+		}
+		for (int dx : {1, 2}) {
+			SetTileHeight(DomainTile(c + dx, row - 2), y_level);
+			if (y_level < 3) SetTileHeight(DomainTile(c + dx, row - 1), 3);
+			if (y_level < 3) SetTileHeight(DomainTile(c + dx, row + 2), 3);
+			SetTileHeight(DomainTile(c + dx, row + 3), y_level);
+		}
+		x_tunnel = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, DomainTile(c - 1, row), TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+		if (x_tunnel.Succeeded()) CHECK(_build_tunnel_endtile == DomainTile(c + 1, row));
+		y_tunnel = Command<Commands::BuildTunnel>::Do(DoCommandFlag::Execute, DomainTile(c + 1, row - 2), TransportType::Rail, RAILTYPE_RAIL, INVALID_ROADTYPE);
+	};
+	CommandCost x_tunnel, y_tunnel;
+	build(2, x_tunnel, y_tunnel);
+	INFO("X tunnel: error " << x_tunnel.GetErrorMessage().base() << "; Y tunnel under its portal: error " << y_tunnel.GetErrorMessage().base());
+	REQUIRE(x_tunnel.Succeeded());
+	CHECK(y_tunnel.Succeeded());
+	CHECK(_build_tunnel_endtile == DomainTile(c + 1, row + 2));
+	build(3, x_tunnel, y_tunnel);
+	INFO("equal levels: X tunnel error " << x_tunnel.GetErrorMessage().base() << "; Y tunnel error " << y_tunnel.GetErrorMessage().base());
+	CHECK(x_tunnel.Succeeded());
+	CHECK(y_tunnel.Failed());
+	/* The domain: each is a tunnel structure with two end pieces at each end; the lower lists the upper as its crosser. */
+	const DomainPoints separator = DomainLay({0, row}, Trackdir::X_SW, "FFFFFFFFF");
+	const DomainPoints crosser = DomainLay({c + 1, 0}, Trackdir::Y_SE, "FFFFFFFFFF");
+	PlanarDomainInput input;
+	input.tracks = {separator, crosser};
+	PlanarDomainStructure x;
+	x.separator = 0;
+	x.first = c - 2;
+	x.last = c + 2;
+	x.tunnel = true;
+	x.ends = 2;
+	PlanarDomainStructure y = x;
+	y.separator = 1;
+	y.first = row - 3;
+	y.last = row + 3;
+	y.crossers = {0};
+	input.structures = {x, y};
+	CHECK(DomainRules(input).empty());
+}
