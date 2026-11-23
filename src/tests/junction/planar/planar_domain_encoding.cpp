@@ -71,6 +71,28 @@ PlanarShapeVariant LoadX1Enc()
 
 constexpr int STEPS[8][2] = {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
 
+/** The program's point bounds (>= 0) are a normalisation, legality does not depend on where a drawing sits: a geometry reaching a negative coordinate is translated by an even (dx, dy), parity kept, so its least coordinate on each such axis is 2 or 3. */
+void NormalisePoints(std::vector<std::vector<std::array<int, 2>>> &points)
+{
+	int least[2] = {INT_MAX, INT_MAX};
+	for (const auto &track : points) {
+		for (const auto &p : track) {
+			for (int a = 0; a < 2; a++) least[a] = std::min(least[a], p[a]);
+		}
+	}
+	int shift[2] = {0, 0};
+	for (int a = 0; a < 2; a++) {
+		if (least[a] < 0 && least[a] != INT_MAX) shift[a] = 2 * ((2 - least[a] + 1) / 2);
+	}
+	if (shift[0] == 0 && shift[1] == 0) return;
+	for (auto &track : points) {
+		for (auto &p : track) {
+			p[0] += shift[0];
+			p[1] += shift[1];
+		}
+	}
+}
+
 /** A geometry: per track name, piece index to length. */
 using Geometry = std::map<std::string, std::map<uint32_t, int>>;
 
@@ -156,6 +178,7 @@ struct X1Fixture {
 				p.push_back(cur);
 			}
 		}
+		NormalisePoints(points);
 		return points;
 	}
 
@@ -782,6 +805,7 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 			out.points[t].push_back(cur);
 		}
 	}
+	NormalisePoints(out.points);
 	const auto &map = f.v.structure.map;
 	for (uint32_t c = 0; c < map.crossings.size(); c++) {
 		const uint32_t t[2] = {map.crossings[c].a, map.crossings[c].b};
