@@ -628,7 +628,7 @@ struct Tally {
 	std::map<std::string, Group> strict;
 	std::map<std::string, Group> loose;
 	std::vector<Example> other; ///< The first other shape polylines.
-	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, only interface rows, the ports and the box, reject them).
+	std::vector<Example> off_interface; ///< The first off interface polylines (the domain accepts them, the full rows reject them, and the read-out without the interface rows, the ports and the box, accepts them); the examples list the full rows' failing rows.
 };
 
 uint32_t g_corridor_rows_seen = 0; ///< The corridor rows over the on-grid contracted variants judged in the last report.
@@ -1113,15 +1113,6 @@ struct Readouts {
 	std::vector<PlanarPointRow> lead; ///< The node lead rows (none when the rule set has no lead).
 };
 
-/** Whether no keep-apart pair, no lead row (when the rule set has them) and no turn rule rejects the polyline: only program rows can. */
-bool OnlyProgramRowsReject(const X1Fixture &f, const Contracted &cv, const Readouts &ro)
-{
-	const bool per_track = std::ranges::all_of(cv.v.tracks, [](const PlanarShapeTrack &tr) { return std::ranges::adjacent_find(tr.pieces, [](int a, int b) { return std::abs(a - b) > 1; }) == tr.pieces.end(); });
-	return per_track && NodeTurnsHold(f, cv)
-		&& std::ranges::all_of(ro.keep.keep_apart, [&](const PlanarKeepApartPair &p) { return PlanarKeepApartHolds(p, cv.points); })
-		&& std::ranges::all_of(ro.lead, [&](const PlanarPointRow &r) { return PlanarPointRowHolds(r, cv.points); });
-}
-
 /** Judge our keep-apart rules against the domain on a fixture's configurations and write the report. */
 void RunEncoding(const X1Fixture &f, const char *report_path, const std::string &title, const std::vector<Config> &configs, const std::string &header, const char *rules_override = nullptr, int *base_verdict = nullptr)
 {
@@ -1153,7 +1144,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 	fx.options.grid = grid;
 
 	/* The read-out of a contracted variant: no flex, so Refine is not needed unless the read-out says so. */
-	auto readouts = [&](const Contracted &contracted_writing) {
+	auto readouts = [&](const Contracted &contracted_writing, bool interface_rows = true) {
 		const PlanarShapeVariant &contracted = contracted_writing.v;
 		const std::vector<std::vector<double>> port_zero_from = PortZeroFrom(contracted_writing.points);
 		Readouts r;
@@ -1170,6 +1161,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		}
 		o.keep_apart_out = true;
 		o.build_only = true;
+		if (!interface_rows) o.skip_rows = {"port ", "box"};
 		r.keep = CheckPlanarDrawable(cv, 5.0, o);
 		PlanarDrawOptions p = fx.options;
 		p.port_zero = portzero;
@@ -1178,6 +1170,7 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 		p.keep_apart_out = true;
 		p.program_out = true;
 		p.build_only = true;
+		if (!interface_rows) p.skip_rows = {"port ", "box"};
 		r.program = CheckPlanarDrawable(cv, 5.0, p);
 		REQUIRE(r.keep.status == "built");
 		REQUIRE(r.program.status == "built");
@@ -1295,9 +1288,9 @@ void RunEncoding(const X1Fixture &f, const char *report_path, const std::string 
 						g_corridor_rows_seen += corridor_rows(ro);
 					}
 					const bool accept = accepts(*cv, ro);
-					/* Off interface: the rows reject only through program rows of the hub's interface (the ports and the box), not tile legality. */
+					/* Off interface: the domain accepts, the full rows reject, and the same read-out without the interface rows (the ports and the box) accepts. */
 					const std::vector<std::string> broken = CheckPlanarProgramOnPoints(ro.program.program, cv->points).broken;
-					const bool only_port = !accept && !broken.empty() && std::ranges::all_of(broken, [](const std::string &b) { return b.starts_with("port ") || b == "box" || b.starts_with("box ") || b == "bound box" || b == "integer box"; }) && OnlyProgramRowsReject(f, *cv, ro);
+					const bool only_port = d.legal && !accept && accepts(*cv, readouts(*cv, false));
 					if (d.legal && only_port) {
 						nc.c = OFF_INTERFACE;
 					} else if (d.legal) {
@@ -2764,6 +2757,23 @@ TEST_CASE("planar domain: two port lines on one point are rejected by the port r
 	CHECK(f.PointsOf(g)[f.idx.at("A2")].back() == f.PointsOf(g)[f.idx.at("A1")].back());
 	const auto port_rows = [](const std::vector<std::string> &broken) { return std::ranges::count_if(broken, [](const std::string &b) { return b.starts_with("port N gap"); }); };
 	CHECK(port_rows(BrokenRows(f, g)) == 1);
+}
+
+TEST_CASE("planar domain: an L1 polyline off its N edge is off interface, not too strict", "[junction][planar][planardomain]")
+{
+	/* The first L1 off-interface example of the domain-29 report: A2 ends short of the N box edge (its port rows fail), and the rest of its rows hold, so the read-out without the interface rows accepts it. */
+	const L1Fixture f;
+	RequireBaseLegal(f);
+	const Config one{"one", {{"A2", 7, {0}}, {"A2", 8, {0}}, {"A2", 9, {2}}, {"A2", 10, {1}}, {"A2", 11, {0}}}, {}};
+	const std::string path = (std::filesystem::temp_directory_path() / "planar_domain_offinterface_l1.txt").string();
+	RunEncoding(f, path.c_str(), "L1", {one}, "", "span+lead+endnode+crosspiece+grid+portzero");
+	std::ifstream in(path);
+	const std::string report((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	std::filesystem::remove(path);
+	INFO(report);
+	CHECK(report.find("A2:1*1,0*2,7*1,;") != std::string::npos);
+	CHECK(report.find("  too strict: 0 polylines") != std::string::npos);
+	CHECK(report.find("  off interface: 1 polylines") != std::string::npos);
 }
 
 TEST_CASE("planar domain: the box width and height are group box, grid halves group half", "[junction][planar][planardomain]")
