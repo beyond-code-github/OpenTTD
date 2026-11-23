@@ -7,7 +7,7 @@ Two-stage plan (yours, adopted): stage A picks which S-bends are used. Contracti
 ## What we measured today (hub T2 unless stated; HiGHS; 15 s cap per solve)
 1. Your step-0 checks worked. Round 1 of stage A's lazy keep-apart loop (51 close pairs, 204 binaries) found nothing in 15 s. With a tight coordinate bound (64 half tiles instead of 4096, so M 256 instead of 16k), the solve was Optimal in 4.3 s. With a zero objective it was 4.5 s, and with both 0.58 s. A MIP start made no difference. Grid parity was not the cause (0.86 s without it).
 2. Fixing every new pair's side from the drawing that broke it is Infeasible in 30 ms, with or without the grid.
-3. With free binaries, a tight bound each round and a zero objective, the lazy loop does NOT converge. Round 0 has 79 failing pairs; then about 18 new failing pairs per round from round 2 on; the rows reach 205 pairs (820 binaries) and round 7 hits the cap. Variants:
+3. STAGE A's lazy keep-apart loop (stage A as it was then, carrying keep-apart), with free binaries, a tight bound each round and a zero objective, does NOT converge. Round 0 has 79 failing pairs; then about 18 new failing pairs per round from round 2 on; the rows reach 205 pairs (820 binaries) and round 7 hits the cap. Variants:
    - With the length objective, round 1 drops the failing count from 51 to 39, but round 2 (90 pairs, 360 binaries) times out.
    - Adding "near" pairs (margin under 2 tiles) adds 1010 of 1945 pairs at once, and round 1 times out.
    - The small hub T1 converges in 3 rounds (23 of 811 pairs, 0.33 s). A 136 ms polish with the length objective, MIP-started, shortens it from 134 to 79 and stays legal.
