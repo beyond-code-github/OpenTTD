@@ -1,3 +1,29 @@
+# sides-4: walk_strict's guarantee counted walls the face cuts at crossings (D431)
+Verdict: class (a), but not a units bug. Units are consistent (a wall's contribution is `coefficient * step . normal`, and the rows' `s . (q - p)` moves the same amount: an axis piece coefficient 2 moves 2 per length unit on one axis, a diagonal piece coefficient 1 moves 1 on each axis). The 1 was lost in `guaranteed`: it counted a wall strictly between the pair at its least length even when the face cuts that wall at a crossing. The face walks such a wall only up to the crossing, which can lie anywhere on the piece, so it guarantees nothing.
+- X1 `sep 1 2 4` (B1 `0*2,1*2,0*10`; B1 p1 diagonal (11,14)-(13,12), s = (-1,-1), spacing 2): the walk between is B1 p2 (heading 0, coefficient 2), cut at the crossing with A1 at (13,11) (A1 y = 11, from (4,11)). `guaranteed` = 2 (B1 p2 at its least) >= 2, so the rule certifies candidate 0. The walked part of B1 p2 is (13,12) to (13,11): 1. Rows: q (13,11) against p (13,12) is s . (0,-1) = 1 < 2, margin -1.
+- L1 `sep 1 1 3` (A2 `1*1,0*6`; A2 p0 diagonal (4,7)-(5,6), B1 `2*8` along y = 5): same: between them A2 p1 (heading 0, coefficient 2) is cut at the crossing with B1 at (5,5); guaranteed 2, walked 1, row q (5,5) against p (5,6) = 1 < 2, margin -1.
+Fix: `guaranteed` skips a wall with a cut end (`cut[k][0]` or `cut[k][1]`), so the rule certifies fewer pairs; the read-out only (rows unchanged; the exactness tests are unaffected, the fast and wide gates pass).
+
+Remaining failure: one, L1 `sep 3 1 4` (A1/A2 pieces 0/2, candidate 3, margin -2), an off-interface drawing: A2 ends at (4,3) not on the box edge, so the face's closing box/port wall (walked heading 6) does not carry the walk from A2's end (4,3) to A1 p1's start (3,0) as the rule assumes (it would need a displacement (-1,-3)). The rule's chain assumes the port/box rows hold; this drawing has dropped them. Class (b) in the off-interface sense: the drawing is outside the rule's premise, not a rule or row error.
+
+Cell = forced share % / failures (forced count), same measurement as sides-3 (off-interface drawings included).
+
+| fixture | walk | walk_strict | facing | strict+facing | inward |
+|---|---|---|---|---|---|
+| X1 | 68.5% / 158 (2264) | 32.1% / 0 (1060) | 0.0% / 0 (0) | 32.1% / 0 (1060) | 24.5% / 268 (811) |
+| X2 | 47.8% / 0 (1417) | 26.3% / 0 (780) | 0.0% / 0 (0) | 26.3% / 0 (780) | 25.9% / 453 (769) |
+| M1 | 47.4% / 3 (188) | 38.3% / 0 (152) | 0.0% / 0 (0) | 38.3% / 0 (152) | 21.4% / 69 (85) |
+| K1 | 67.2% / 4 (1130) | 64.5% / 0 (1084) | 0.0% / 0 (0) | 64.5% / 0 (1084) | 18.3% / 215 (308) |
+| L1 | 53.5% / 191 (1494) | 18.8% / 1 (524) | 8.0% / 0 (224) | 26.8% / 1 (748) | 30.4% / 368 (848) |
+| Y1 | 61.4% / 18 (178) | 30.3% / 0 (88) | 0.0% / 0 (0) | 30.3% / 0 (88) | 21.7% / 51 (63) |
+| P1 | 0 | 0 | 0 | 0 | 0 |
+| BR1 | 54.1% / 3 (66) | 23.8% / 0 (29) | 0.0% / 0 (0) | 23.8% / 0 (29) | 27.9% / 11 (34) |
+| TT1 | 55.0% / 0 (11) | 15.0% / 0 (3) | 0.0% / 0 (0) | 15.0% / 0 (3) | 25.0% / 1 (5) |
+| TS2 | 86.4% / 0 (19) | 9.1% / 0 (2) | 31.8% / 0 (7) | 40.9% / 0 (9) | 40.9% / 0 (9) |
+| 197 | 52.7% / 54 (1325) | 22.1% / 0 (556) | 8.9% / 0 (223) | 29.5% / 0 (741) | 41.5% / 410 (1043) |
+
+walk_strict failures sides-3 -> sides-4: X1 21 -> 0, L1 157 -> 1, Y1 2 -> 0, BR1 3 -> 0, 197 10 -> 0; the rest 0 -> 0. The price: walk_strict's forced share falls (X1 45.2% -> 32.1%, L1 41.8% -> 18.8%, 197 43.8% -> 22.1%), because a cut wall no longer counts toward the guarantee.
+
 # sides-3: keep-apart separates a face's wall segments, cut at crossings (D431)
 Change: a wall the face cuts at a crossing ends at the crossing point in the pair rows (and in the read-out, `PlanarKeepApartPair::Row::p_cross` / `q_cross`, `PlanarKeepApartEnd`). Same measurement as sides-2 (off-interface drawings included). Cell = forced share % / failures (forced count).
 
