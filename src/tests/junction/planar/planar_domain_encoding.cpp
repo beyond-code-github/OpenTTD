@@ -6739,6 +6739,25 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			if (first.status == "Optimal") {
 				lock_ref = first.lengths;
 				sa.curve_flex_from = &lock_ref;
+				/* PLANAR_STAGEA_LOCK_FREE: unused inserts are free instead of held at 0; PLANAR_STAGEA_UNLOCK="D1:1,D2:1": those inserts free too (track name:piece). */
+				sa.curve_flex_free = std::getenv("PLANAR_STAGEA_LOCK_FREE") != nullptr;
+				if (const char *unlock = std::getenv("PLANAR_STAGEA_UNLOCK"); unlock != nullptr) {
+					const auto &mt = v.structure.map.tracks;
+					std::string all = unlock;
+					for (size_t at = 0; at <= all.size();) {
+						const size_t end = std::min(all.find(',', at), all.size());
+						const std::string item = all.substr(at, end - at);
+						at = end + 1;
+						const size_t colon = item.find(':');
+						if (colon == std::string::npos) continue;
+						const std::string name = item.substr(0, colon);
+						size_t piece = SIZE_MAX;
+						std::from_chars(item.data() + colon + 1, item.data() + item.size(), piece);
+						for (size_t t = 0; t < mt.size(); t++) {
+							if (mt[t].name == name && piece < lock_ref[t].size()) lock_ref[t][piece] = 0;
+						}
+					}
+				}
 			}
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
@@ -6965,6 +6984,25 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 			if (first.status == "Optimal") {
 				lock_ref = first.lengths;
 				sa.curve_flex_from = &lock_ref;
+				/* PLANAR_STAGEA_LOCK_FREE: unused inserts are free instead of held at 0; PLANAR_STAGEA_UNLOCK="D1:1,D2:1": those inserts free too (track name:piece). */
+				sa.curve_flex_free = std::getenv("PLANAR_STAGEA_LOCK_FREE") != nullptr;
+				if (const char *unlock = std::getenv("PLANAR_STAGEA_UNLOCK"); unlock != nullptr) {
+					const auto &mt = v.structure.map.tracks;
+					std::string all = unlock;
+					for (size_t at = 0; at <= all.size();) {
+						const size_t end = std::min(all.find(',', at), all.size());
+						const std::string item = all.substr(at, end - at);
+						at = end + 1;
+						const size_t colon = item.find(':');
+						if (colon == std::string::npos) continue;
+						const std::string name = item.substr(0, colon);
+						size_t piece = SIZE_MAX;
+						std::from_chars(item.data() + colon + 1, item.data() + item.size(), piece);
+						for (size_t t = 0; t < mt.size(); t++) {
+							if (mt[t].name == name && piece < lock_ref[t].size()) lock_ref[t][piece] = 0;
+						}
+					}
+				}
 			}
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
