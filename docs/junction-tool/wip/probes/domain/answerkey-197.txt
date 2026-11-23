@@ -1,0 +1,98 @@
+tracks 101 mapped 101 unmapped 0
+box low corner, rounded down to even (156, 274)
+geometry connected at the nodes: yes; end pins not met: 2
+domain on V's points: NOT legal, 64 breaks, 3 notes
+  note: structure 11 (L5): no room for its end runs
+  note: structure 43 (L61): no room for its end runs
+  note: structure 48 (L70): no room for its end runs
+  domain rule connection: 19
+  domain rule diamond: 16
+  domain rule head: 2
+  domain rule missing crossing: 10
+  domain rule node: 4
+  domain rule span: 13
+  break span tile (15,24) tracks L48: the structure on pieces 3..17 is not a straight run of 1 to 64 middles
+  break span tile (26,27) tracks L80: the structure on pieces 1..6 is not a straight run of 1 to 64 middles
+  break span tile (14,29) tracks L45: the structure on pieces 1..6 is not a straight run of 1 to 64 middles
+  break span tile (15,30) tracks L46: the structure on pieces 3..7 is not a straight run of 1 to 64 middles
+  break span tile (16,32) tracks L11: the structure on pieces 20..25 is not a straight run of 1 to 64 middles
+  break span tile (16,33) tracks L12: the structure on pieces 19..25 is not a straight run of 1 to 64 middles
+  break span tile (9,34) tracks L11: the structure on pieces 11..17 is not a straight run of 1 to 64 middles
+  break span tile (10,35) tracks L12: the structure on pieces 11..16 is not a straight run of 1 to 64 middles
+  break span tile (18,36) tracks L57: the structure on pieces 19..28 is not a straight run of 1 to 64 middles
+  break span tile (19,36) tracks L59: the structure on pieces 18..27 is not a straight run of 1 to 64 middles
+  break span tile (20,36) tracks L60: the structure on pieces 19..28 is not a straight run of 1 to 64 middles
+  break span tile (16,38) tracks L48: the structure on pieces 18..27 is not a straight run of 1 to 64 middles
+  break span tile (15,43) tracks L49: the structure on pieces 6..10 is not a straight run of 1 to 64 middles
+  break node tile (27,42) tracks L69: track 71 is listed in `out` but does not start at (54, 85)
+  break node tile (27,42) tracks L70: track 79 is listed in `out` but does not start at (54, 85)
+  break node tile (51,36) tracks L96: track 99 is listed in `out` but does not start at (102, 73)
+  break node tile (51,36) tracks L94: track 98 is listed in `out` but does not start at (102, 73)
+  break connection tile (4,25) tracks L4 L5: 4 track ends meet at (9, 50) with no node
+  break connection tile (12,34) tracks L11 L37: 4 track ends meet at (24, 69) with no node
+  break connection tile (13,35) tracks L12 L37: 4 track ends meet at (26, 71) with no node
+counts: tracks 101, raw pieces 265, contracted pieces 262, unmapped 0; contraction moved 0, turn-rejected 0
+judge (default rules, interface rows): REFUSE
+  rule named: end run
+  rule named: grid
+  rule named: keep apart
+  rule named: node gap
+  rule named: other deck
+  rule named: other node
+  rule named: other order
+  refusing rule end run: 17 rows
+    end 9
+    end 15
+    end 15 node
+    end 16 node
+    end 17
+    end 17 node
+    end 20
+    end 22
+    end 25
+    end 28
+  refusing rule grid: 2 rows
+    integer half
+    bound half
+  refusing rule keep apart: 10 rows
+    sep 57 2 4 [tracks L40,L57]
+    sep 95 1 3 [tracks L40,L57]
+    sep 119 1 6 [tracks L40,L57]
+    sep 119 2 6 [tracks L40,L57]
+    sep 120 0 3 [tracks L40,L57]
+    sep 120 1 3 [tracks L40,L57]
+    sep 141 3 6 [tracks L89,L74]
+    sep 141 4 6 [tracks L89,L74]
+    sep 155 4 6 [tracks L74,L89]
+    sep 155 4 7 [tracks L74,L89]
+  refusing rule node gap: 1 rows
+    leg zero L101
+  refusing rule other deck: 2 rows
+    deck 1
+    deck 20
+  refusing rule other node: 2 rows
+    node 47
+    node 61
+  refusing rule other order: 1 rows
+    order L57 0
+rows written per rule (V's places that exercise it: keep-apart pairs with rows, lead rows, program rows by tag family):
+  box: 726
+  crossing piece: 1112
+  end run: 200
+  grid: 1584
+  keep apart: 30045
+  length: 524
+  node gap: 32
+  other deck: 86
+  other node: 248
+  other order: 151
+  other span: 50
+  port: 30
+judge off-interface counterfactual (no port and box rows): REFUSE
+  rule named: end run
+  rule named: grid
+  rule named: keep apart
+  rule named: node gap
+  rule named: other deck
+  rule named: other node
+  rule named: other order
