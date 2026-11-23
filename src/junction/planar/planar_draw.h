@@ -185,6 +185,7 @@ struct PlanarDrawOptions {
 	const std::vector<std::vector<double>> *curve_flex_from = nullptr; ///< Flex commitment (D422 probe; Gemini digest 2026-11-23): per flex middle, its length in this reference (half tiles, as PlanarDrawResult::lengths); at or above curve_flex_above the insert is committed (length >= its least, a real bend pair in the curve rows), below it the insert is held at 0.
 	double curve_flex_above = 0.25; ///< With curve_flex_from.
 	const std::vector<std::vector<double>> *curve_flex_soft = nullptr; ///< Scheme A (a probe): per track and piece, a slack price; when set, every flex insert is a real bend in the curve rows (its length stays free), and its rows (tag "curve flex <name> <i>") are elastic at that price whatever elastic_families says (price 0: no row).
+	std::vector<std::string> flex_free_tracks; ///< With curve_flex_from (a measurement, neighbourhood repair): the flex inserts of these tracks (by name) are free (lower bound 0, not held), whatever the reference says.
 	bool curve_flex_free = false; ///< With curve_flex_from (a measurement, the additions pass): an insert below curve_flex_above is free (priced by flex_weights, no curve rows, as in discovery) instead of held at 0.
 	const std::vector<std::vector<double>> *flex_weights = nullptr; ///< A measurement (D422 discovery, IRL1): per track and piece, the extra objective cost per half tile of that flex insert's length; when set it replaces flex_price.
 	double box_price = 0; ///< A measurement (D422 discovery): objective cost per half tile of width and of height.

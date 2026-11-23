@@ -6741,6 +6741,15 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				sa.curve_flex_from = &lock_ref;
 				/* PLANAR_STAGEA_LOCK_FREE: unused inserts are free instead of held at 0; PLANAR_STAGEA_UNLOCK="D1:1,D2:1": those inserts free too (track name:piece). */
 				sa.curve_flex_free = std::getenv("PLANAR_STAGEA_LOCK_FREE") != nullptr;
+				if (const char *tracks = std::getenv("PLANAR_STAGEA_FREE_TRACKS"); tracks != nullptr) {
+					/* Neighbourhood repair: comma-separated track names whose inserts are free. */
+					std::string all = tracks;
+					for (size_t at = 0; at <= all.size();) {
+						const size_t end = std::min(all.find(',', at), all.size());
+						if (end > at) sa.flex_free_tracks.push_back(all.substr(at, end - at));
+						at = end + 1;
+					}
+				}
 				if (const char *unlock = std::getenv("PLANAR_STAGEA_UNLOCK"); unlock != nullptr) {
 					const auto &mt = v.structure.map.tracks;
 					std::string all = unlock;
@@ -6986,6 +6995,15 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 				sa.curve_flex_from = &lock_ref;
 				/* PLANAR_STAGEA_LOCK_FREE: unused inserts are free instead of held at 0; PLANAR_STAGEA_UNLOCK="D1:1,D2:1": those inserts free too (track name:piece). */
 				sa.curve_flex_free = std::getenv("PLANAR_STAGEA_LOCK_FREE") != nullptr;
+				if (const char *tracks = std::getenv("PLANAR_STAGEA_FREE_TRACKS"); tracks != nullptr) {
+					/* Neighbourhood repair: comma-separated track names whose inserts are free. */
+					std::string all = tracks;
+					for (size_t at = 0; at <= all.size();) {
+						const size_t end = std::min(all.find(',', at), all.size());
+						if (end > at) sa.flex_free_tracks.push_back(all.substr(at, end - at));
+						at = end + 1;
+					}
+				}
 				if (const char *unlock = std::getenv("PLANAR_STAGEA_UNLOCK"); unlock != nullptr) {
 					const auto &mt = v.structure.map.tracks;
 					std::string all = unlock;

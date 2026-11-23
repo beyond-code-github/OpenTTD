@@ -13,3 +13,11 @@
 - STEP2B T2 conflict rows 68: [piece CD1 0] [piece CD1 1] [piece CD1 2] [piece CD1 3] [piece CD1 4] [piece CD2 0] [piece CD2 1] [piece CD2 2] [piece CD2 3] [piece CD2 4] [piece AF1 0] [piece AF1 1] [piece AF1 2] [piece AF1 3] [piece AF1 4] [piece AF2 4] [piece A2 4] [piece A2 5] [piece A2 6] [piece A2 7] [piece A2 8] [piece A2 9] [piece A2 10] [piece A2 11] [piece A2 12] [piece A2 13] [piece D1 0] [piece D1 1] [piece D1 2] [piece D1 3] [piece D1 4] [piece D1 5] [piece D1 6] [piece D1 7] [piece D2 0] [piece D2 1] [piece D2 2] [piece D2 3] [piece D2 4] [piece D2 5] [piece D2 6] [piece D2 7] [piece D2 8] [piece F1 17] [piece F1 18] [piece F1 19] [piece F1 20] [piece F1 21] [piece F2 8] [piece F2 9] [piece F2 10] [piece F2 11] [piece F2 12] [port S gap CD2] [port S gap AF2] [port S gap AF1] [node 2] [node 3] [node 6] [node 7] [cross 1] [cross 11] [cross 14] [cross 16] [end 0 node] [deck 2] [end 3] [end 3 node]
 
 Reading: (b) has no flank rows in its conflict: those five S-bends are required (ports S, crossings 1/11/14/16, deck 2, end runs). With them used and the other S-bends as the no-flank drawing chose, their flanks do not fit (lock: Infeasible 76 ms). Freeing every unused insert (a) gives no answer in 15 s. Open: whether any S-bend choice fits (needs a per-insert free knob or an offline local model).
+
+## Neighbourhood repair (flex_free_tracks; lock from the no-flank drawing, inserts on the named tracks free)
+- STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Infeasible 133 ms, flank rows written 86
+- STEP2B T2 conflict rows 0:
+- STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Error 15021 ms, flank rows written 121
+- STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Error 15075 ms, flank rows written 90
+
+n1 = D1,D2,A2,B1,F2: Infeasible 133 ms, empty conflict (proved by branching): no S-bend choice on those five tracks fits with the others as chosen. n3 = n1 + CD1,CD2 (the trunks): Error 15 s. n2 = all 13 tracks of the lock conflict: Error 15 s. The neighbourhood does not stay small: a fix needs S-bend changes on several further tracks, and the search is hard from 7 free tracks on.
