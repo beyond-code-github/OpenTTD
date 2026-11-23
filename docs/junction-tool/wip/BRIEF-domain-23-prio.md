@@ -11,7 +11,7 @@ Budget: 75 minutes wall. Test code only (no gate). One Release run per rule set 
 
 ## 2. Fixture P1 (text verbatim; a refusal by the parser, the structure loader or Shape is a stop: report its message)
 - topology: `topology P1` / `port W in E: A1` / `port S in N: C1` / `port E out E: AC1` / `node A1, C1 -> AC1` / `prio A1`
-- structure: empty (no structures). If the loader needs a statement, stop and report.
+- structure: `straight AC1: A1` (A1 is the prio, so it is the merge's straight leg; the loader needs a straight statement per node trunk).
 - shape: `ShapePlanarStructureVariant`, as Y1/L1.
 - Base geometry: as BRIEF-domain-19 §2 (the program's drawing with the rule set's options plus `grid`, `tidy`, `corridor = true`, integer; Optimal; the domain accepts its points). Either failing is a stop.
 - Report the expanded tracks (name, from, to, beside or not) and Shape's headings, one line each.
