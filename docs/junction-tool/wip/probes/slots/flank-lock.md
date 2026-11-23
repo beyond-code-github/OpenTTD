@@ -42,3 +42,10 @@ Reading: a turn-legal S-bend choice EXISTS for T2 (under rows that are, if anyth
 | B+ | 1 | Infeasible | 1217 | 0 | 55 | 220 | - | 0 |
 - Flank-rule gaps: node 14 F6 is a beside leg (prio:E1; beside tracks are skipped by the rule); node 10 F8 (D1 and E1 arriving h2) not yet explained.
 - Stage B with that S-bend choice: keep-apart Infeasible at 55 pairs (proved by branching): an S-bend choice made without keep-apart does not leave room for the spacing.
+
+## Conflict-driven S-bends from zero (PLANAR_STAGEA_IIS, 2026-11-24)
+- STEP2B T2 IIS round 0: Infeasible 72 ms, conflict rows 192, tracks named 20, newly freed 20, free tracks 20
+- STEP2B T2 IIS round 1: Error 15028 ms, conflict rows 0, tracks named 0, newly freed 0, free tracks 20
+- STEP2B T2 stage A (no keep-apart rows, tidy on, K 64, flank rows on): Error 15026 ms, flank rows written 130
+
+Reading: the first conflict (every insert held at 0) is 192 rows naming 20 tracks, nearly the whole hub; freeing their inserts is the full free search again (Error at 15 s, empty conflict). The LP conflict does not localise the missing S-bends on T2, so conflict-driven proposals do not get past round 1, before keep-apart is even reached.

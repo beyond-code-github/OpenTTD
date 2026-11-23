@@ -6789,6 +6789,44 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				}
 			}
 		}
+		/* PLANAR_STAGEA_IIS (conflict-driven S-bends, D447 / Gemini): every insert starts held at 0; each Infeasible round frees the inserts of the tracks its conflict names (piece, flank, port and cross rows); at most 8 rounds; the last configuration is solved below. */
+		std::vector<std::vector<double>> iis_ref;
+		if (std::getenv("PLANAR_STAGEA_IIS") != nullptr) {
+			iis_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) iis_ref[t].assign(v.tracks[t].pieces.size(), 0.0);
+			sa.curve_flex_from = &iis_ref;
+			const auto &mp = v.structure.map;
+			for (int round = 0; round < 8; round++) {
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, sa);
+				std::set<std::string> named;
+				for (const std::string &c : r.conflict) {
+					std::istringstream words(c);
+					std::string family, w2, w3, w4;
+					words >> family >> w2 >> w3 >> w4;
+					if (family == "piece" || family == "flank") {
+						named.insert(w2);
+					} else if (family == "port") {
+						named.insert(w4); // "port S gap CD2"
+					} else if (family == "cross") {
+						size_t k = SIZE_MAX;
+						std::from_chars(w2.data(), w2.data() + w2.size(), k);
+						if (k < mp.crossings.size()) {
+							named.insert(mp.tracks[mp.crossings[k].a].name);
+							named.insert(mp.tracks[mp.crossings[k].b].name);
+						}
+					}
+				}
+				size_t added = 0;
+				for (const std::string &n : named) {
+					if (std::ranges::find(sa.flex_free_tracks, n) != sa.flex_free_tracks.end()) continue;
+					sa.flex_free_tracks.push_back(n);
+					added++;
+				}
+				out << std::format("- {} IIS round {}: {} {} ms, conflict rows {}, tracks named {}, newly freed {}, free tracks {}\n", tag, round, r.status, static_cast<int>(r.ms), r.conflict.size(), named.size(), added, sa.flex_free_tracks.size());
+				flush();
+				if (r.status != "Infeasible" || added == 0) break;
+			}
+		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows);
 		if (a.status == "Infeasible") {
@@ -7061,6 +7099,44 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 						}
 					}
 				}
+			}
+		}
+		/* PLANAR_STAGEA_IIS (conflict-driven S-bends, D447 / Gemini): every insert starts held at 0; each Infeasible round frees the inserts of the tracks its conflict names (piece, flank, port and cross rows); at most 8 rounds; the last configuration is solved below. */
+		std::vector<std::vector<double>> iis_ref;
+		if (std::getenv("PLANAR_STAGEA_IIS") != nullptr) {
+			iis_ref.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) iis_ref[t].assign(v.tracks[t].pieces.size(), 0.0);
+			sa.curve_flex_from = &iis_ref;
+			const auto &mp = v.structure.map;
+			for (int round = 0; round < 8; round++) {
+				const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, sa);
+				std::set<std::string> named;
+				for (const std::string &c : r.conflict) {
+					std::istringstream words(c);
+					std::string family, w2, w3, w4;
+					words >> family >> w2 >> w3 >> w4;
+					if (family == "piece" || family == "flank") {
+						named.insert(w2);
+					} else if (family == "port") {
+						named.insert(w4); // "port S gap CD2"
+					} else if (family == "cross") {
+						size_t k = SIZE_MAX;
+						std::from_chars(w2.data(), w2.data() + w2.size(), k);
+						if (k < mp.crossings.size()) {
+							named.insert(mp.tracks[mp.crossings[k].a].name);
+							named.insert(mp.tracks[mp.crossings[k].b].name);
+						}
+					}
+				}
+				size_t added = 0;
+				for (const std::string &n : named) {
+					if (std::ranges::find(sa.flex_free_tracks, n) != sa.flex_free_tracks.end()) continue;
+					sa.flex_free_tracks.push_back(n);
+					added++;
+				}
+				out << std::format("- {} IIS round {}: {} {} ms, conflict rows {}, tracks named {}, newly freed {}, free tracks {}\n", tag, round, r.status, static_cast<int>(r.ms), r.conflict.size(), named.size(), added, sa.flex_free_tracks.size());
+				flush();
+				if (r.status != "Infeasible" || added == 0) break;
 			}
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
