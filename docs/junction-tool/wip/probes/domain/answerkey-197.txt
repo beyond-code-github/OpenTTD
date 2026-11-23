@@ -1,10 +1,8 @@
 tracks 101 mapped 101 unmapped 0
 box low corner, rounded down to even (156, 274)
 geometry connected at the nodes: yes; end pins not met: 2
-domain on V's points: NOT legal, 20 breaks, 0 notes
+domain on V's points: NOT legal, 6 breaks, 0 notes
   domain rule connection: 2
-  domain rule head: 7
-  domain rule missing crossing: 7
   domain rule node: 4
   break node tile (27,42) tracks L69: track 71 is listed in `out` but does not start at (54, 85)
   break node tile (27,42) tracks L70: track 79 is listed in `out` but does not start at (54, 85)
@@ -12,20 +10,6 @@ domain on V's points: NOT legal, 20 breaks, 0 notes
   break node tile (51,36) tracks L94: track 98 is listed in `out` but does not start at (102, 73)
   break connection tile (26,43) tracks L69 L70: 2 track ends meet at (53, 86) with no node
   break connection tile (50,36) tracks L94 L96: 2 track ends meet at (100, 73) with no node
-  break head tile (14,34) tracks L11 L47: an end piece on tile (14, 34) shares it with another piece
-  break head tile (14,35) tracks L12 L47: an end piece on tile (14, 35) shares it with another piece
-  break head tile (15,29) tracks L45 L48: an end piece on tile (15, 29) shares it with another piece
-  break head tile (17,32) tracks L11 L57: an end piece on tile (17, 32) shares it with another piece
-  break head tile (17,33) tracks L12 L57: an end piece on tile (17, 33) shares it with another piece
-  break head tile (18,29) tracks L45 L59: an end piece on tile (18, 29) shares it with another piece
-  break head tile (18,30) tracks L46 L59: an end piece on tile (18, 30) shares it with another piece
-  break missing crossing tile (17,22) tracks L11 L57: track 25 is listed under the structure on track 64 but never passes under a middle
-  break missing crossing tile (17,22) tracks L12 L57: track 26 is listed under the structure on track 64 but never passes under a middle
-  break missing crossing tile (18,23) tracks L45 L59: track 48 is listed under the structure on track 68 but never passes under a middle
-  break missing crossing tile (18,23) tracks L46 L59: track 49 is listed under the structure on track 68 but never passes under a middle
-  break missing crossing tile (14,26) tracks L11 L47: track 25 is listed under the structure on track 54 but never passes under a middle
-  break missing crossing tile (14,26) tracks L12 L47: track 26 is listed under the structure on track 54 but never passes under a middle
-  break missing crossing tile (15,26) tracks L45 L48: track 48 is listed under the structure on track 53 but never passes under a middle
 counts: tracks 101, raw pieces 265, contracted pieces 262, unmapped 0; contraction moved 0, turn-rejected 0
 judge (default rules, interface rows): REFUSE
   rule named: deck
