@@ -5,6 +5,7 @@ You execute this brief and nothing else. Make exactly the changes listed. Do not
 Budget: 75 minutes in all. Each solve in the probe run (part 4) is capped at 15 s; run the probe at most twice (before and after). No rerun loops: a result you do not expect is reported, not retried with other knobs.
 
 ## 1. State
+- Run 2. Part 5.1 is DONE (440cdf2263, `PlanarLegTurnedHeading`); start from it. The first run's parked diff is `/home/pete/OpenTTD/docs/junction-tool/wip/node-cusp-wip.patch` (reference only: it holds temporary hooks; do not apply it whole). Commit only the second commit of part 9.
 - Worktree `/home/pete/OpenTTD/.claude/ng1`, branch `wt-e1`, head `<HEAD>` (= feature/junction-tool). Builds: Debug `build`, Release `build-rel`.
 - Design: DECISIONS D449 (the bend pre-program decides S-bends; node shapes are its first part) and D451 (this rule). Evidence: `docs/junction-tool/wip/probes/slots/flank-lock.md`, last section ("Shape's node waiver at prio joins").
 
@@ -17,7 +18,7 @@ Budget: 75 minutes in all. Each solve in the probe run (part 4) is capped at 15 
 - `src/tests/junction/planar/planar_domain_encoding.cpp` lines 7275-7345 (how the `[slotsstep2]` probes build T2's variant and read the env knobs) and the probe at line 6664 (`[slotsstep2]`, "stage B from ContractedVariant of stage A") where `PLANAR_NODE_FLANK` is read (line 6721).
 
 ## 3. The rule (D451)
-At a site whose node is a topology node (every track at it a Line), a leg that is not the straight leg and whose heading at the node equals the trunk heading h (a cusp; today only prio joins: T2 nodes 8, 9, 10 = B1, B2, D1) gets, at its node end:
+**Run 2 (after the first agent's stop, 2026-11-25):** a cusp is a leg that is itself a Line track, is not the site's straight leg, and whose heading at the node equals the trunk heading h. The OTHER tracks at the node may be Rows or copies (prio joins carry a row: T2 node 8 holds prio:B1, node 9 prio:B2, node 10 prio:E1); CheckH3's all-Lines filter is NOT used here. On T2 this gives B1 (node 8), B2 (node 9), D1 (node 10). B1 and B2 are single pieces with no flex (parent chains of their rows): they are reported missing and left as they are (they do not break F8 today); D1 is the one forced. Such a cusp gets, at its node end:
 - the **insert** = the flex middle in its **node-end flex group** nearest the node whose heading is `turned` (same heading mod 8; `turned` exactly as `CheckH3` computes it): its length's lower bound is the least length (variable lower bound 1, as any required piece; coefficient unchanged), its upper bound `coord_max`; nothing else caps it;
 - every piece strictly between that insert and the node (the flank after it, other inserts, the last flank): lower bound 0 and upper bound 0 (held at 0). This overrides `node_flank` for this leg end.
 So the joiner arrives on the turned heading, flush at the node, as the game's prio join does (it turns in on the merge tile).
@@ -32,8 +33,8 @@ Expected on T2 node 10 (from the evidence): D1's last pieces are `10: h1 middle,
 ## 4. Tests, outermost first
 **Test A** (new, `src/tests/junction/planar/planar_domain_encoding.cpp`, tags `[junction][planar][planarcusp]`): "planar draw: a prio joiner's node S-bend is forced at its node on T2 (D451)".
 - Build T2's variant exactly as the `[slotsstep2cdiag]` test does (topology `PlanarTText(2)`, `BuildPlanarStructure(topology, spec, 1)`, `ShapePlanarStructureVariant`, strip the flex, `PlacePlanarShapeFlex(v, why, true, false, 1)`).
-- `PlanarNodeCusps(v)` returns exactly three cusps, at nodes 8, 9 and 10, tracks B1, B2, D1 (by `map.tracks[t].name`); none missing; for each, `pieces[insert]` is the same heading mod 8 as `PlanarLegTurnedHeading(...)` for that leg and not the trunk's; `held` is exactly the pieces between the insert and the node.
-- Then build the stage A program with `build_only = true`, `program_out = true`, options as the step2b probe's stage A with `flank_turn`, `node_flank` and `node_cusp` true; assert `PlanarDrawResult::cusps_forced == 3` and that no row's tag is `flank <track> <insert> after` for the three forced inserts (merge legs: the node side is `after`).
+- `PlanarNodeCusps(v)` returns exactly three cusps, at nodes 8, 9 and 10, tracks B1, B2, D1 (by `map.tracks[t].name`); B1 and B2 missing with reason "no flex group at the node end"; D1 not missing, `insert` 10, `held` {11, 12, 13}, and `pieces[insert]` is the same heading mod 8 as `PlanarLegTurnedHeading(...)` for that leg and not the trunk's; `held` is exactly the pieces between the insert and the node.
+- Then build the stage A program with `build_only = true`, `program_out = true`, options as the step2b probe's stage A with `flank_turn`, `node_flank` and `node_cusp` true; assert `PlanarDrawResult::cusps_forced == 1`, `cusps_missing.size() == 2`, and that no row's tag is `flank D1 10 after` (merge leg: the node side is `after`).
 - Red first: add the declarations and a `PlanarNodeCusps` that returns `{}` and a `node_cusp` that does nothing, build, run, record the assertion failure text. Then implement.
 - Budget: `tools/junction/jt fast build '[planarcusp]' 5` in Debug. Over budget is a stop.
 
@@ -71,7 +72,7 @@ From `/home/pete/OpenTTD/.claude/ng1/build-rel`, output to files under your sess
 - No Python rewrites of source files; edit with the Edit tool. No `git stash`. Never touch the rig (ports 4077/4079), game clients or other worktrees.
 
 ## 8. Stop conditions
-- T2's cusps are not exactly nodes 8, 9, 10 (B1, B2, D1), or any is missing.
+- T2's cusps are not exactly B1, B2, D1 at nodes 8, 9, 10, or D1's insert/held differ from 10 / {11, 12, 13}.
 - A node lead row (`lead`) names a forced insert, or the forced bounds contradict another row by construction (report the tag).
 - The capped skip removes a row other than those named in 5.4.
 - Any `[planar]` test other than test A changes result; over budget.
