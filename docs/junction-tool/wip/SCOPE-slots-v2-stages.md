@@ -15,6 +15,7 @@
 5. **Later, optional: one-axis compaction** (wip/NOTE-one-axis-compaction.md) on stage B's drawing: alternating x/y LPs, no binaries, legal at every step.
 
 ## Steps for the morning (each one agent, test-first)
+0. Cheap checks on T2's integer stage before restructuring: a tight coordinate bound for every big-M (from stage A's drawing), a zero objective (feasibility only), stage A's drawing as a MIP start; one solve each, 15 s cap. (Hypotheses: big-M size, then integer parity, then objective.)
 1. Stage A as an LP lazy loop (continuous lengths, no grid): T1 and T2; rounds, pairs, ms; the drawing's chosen offers.
 2. Contraction with the turn rules: the rule (keep the flank when dropping it breaks F6/F8; F3 within a track as `ContractedVariant` already does), a unit test per rule (red first), applied to stage A's T2 drawing.
 3. Stage B integer from stage A (fixed sides, lazy): T1 regression, T2; judge and domain verdicts.
