@@ -5967,8 +5967,11 @@ TEST_CASE("planar slots: lazy keep-apart rows on T1 and T2 (D444)", "[.][lazymea
 			track.flex.clear();
 		}
 		struct Config { int offers; bool d443; };
-		for (const Config cfg : {Config{1, false}, Config{3, true}}) {
-			if (cfg_env != nullptr && std::string(cfg_env) != std::format("{}", cfg.offers)) continue;
+		for (const Config cfg : {Config{1, false}, Config{3, true}, Config{3, false}, Config{1, true}}) {
+			/* Unset: the two lazy-1 configs; "1", "3": by offers among those two; "1on", "3off", ...: one config by offers and D443. */
+			const bool is_default = (cfg.offers == 1 && !cfg.d443) || (cfg.offers == 3 && cfg.d443);
+			if (cfg_env == nullptr ? !is_default : std::string(cfg_env) != std::format("{}", cfg.offers) && std::string(cfg_env) != std::format("{}{}", cfg.offers, cfg.d443 ? "on" : "off")) continue;
+			if (cfg_env != nullptr && std::string(cfg_env).size() == 1 && !is_default) continue;
 			PlanarShapeVariant v = base;
 			REQUIRE(PlacePlanarShapeFlex(v, why, true, cfg.d443, cfg.offers));
 			size_t flex_pairs = 0;

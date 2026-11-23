@@ -2222,3 +2222,51 @@ TEST_CASE("planar shape: offers and D443 measured on 197, T1, T2, T3 (shape-5)",
 		WARN(fmt::format("SHAPE5 offers {} d443 {}: V's step stretches {} carried {}", cfg.offers, cfg.d443, listed, carried));
 	}
 }
+
+TEST_CASE("planar shape layer: a beside track's parent chain gets no S-bend offers its copy cannot follow (D421, D442)", "[junction][planar][planarshape]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult r = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!r.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(r.variants[0], base, why));
+	StripFlexForOffers(base);
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, true, 3));
+	const PlanarTrackMap &map = v.structure.map;
+	size_t beside_pairs = 0;
+	for (uint32_t b = 0; b < map.tracks.size(); b++) {
+		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
+		std::vector<uint32_t> chain;
+		REQUIRE(ParentChain(map, v.structure.sites, b, chain));
+		/* The parent chain's own pieces carry no flex (the copy has the same pieces, none of them flex). */
+		for (const uint32_t t : chain) CHECK(v.tracks[t].flex.empty());
+		CHECK(v.tracks[b].flex.empty());
+		/* A crosser of the chain and of its copy at the same place: the crossing of the copy and the chain's crossing at the same index with the same crosser. The stretch of the crosser between the two is within one lane pair and gets no flex. */
+		std::vector<uint32_t> chain_events;
+		for (const uint32_t t : chain) chain_events.insert(chain_events.end(), map.events[t].begin(), map.events[t].end());
+		REQUIRE(chain_events.size() == map.events[b].size());
+		for (size_t k = 0; k < chain_events.size(); k++) {
+			const PlanarCrossing &cb = map.crossings[map.events[b][k]], &cp = map.crossings[chain_events[k]];
+			const uint32_t xb = cb.a == b ? cb.b : cb.a;
+			const uint32_t xp = std::ranges::find(chain, cp.a) != chain.end() ? cp.b : cp.a;
+			if (xb != xp) continue;
+			const std::vector<uint32_t> &events = map.events[xb];
+			const auto at = [&](uint32_t c) { return static_cast<size_t>(std::ranges::find(events, c) - events.begin()); };
+			const size_t ib = at(map.events[b][k]), ip = at(chain_events[k]);
+			if (ib >= events.size() || ip >= events.size() || (ib > ip ? ib - ip : ip - ib) != 1) continue;
+			beside_pairs++;
+			const PlanarShapeTrack &x = v.tracks[xb];
+			const size_t first = x.event_piece[std::min(ib, ip)], last = x.event_piece[std::max(ib, ip)];
+			size_t flex = 0;
+			for (const uint32_t m : x.flex) flex += (m > first && m < last) ? 1 : 0;
+			INFO("crosser " << map.tracks[xb].name << " between its crossings of " << map.tracks[chain.front()].name << " and its copy " << map.tracks[b].name << ": pieces " << first << " to " << last);
+			CHECK(flex == 0);
+			CHECK(first == last);
+		}
+	}
+	CHECK(beside_pairs > 0);
+}

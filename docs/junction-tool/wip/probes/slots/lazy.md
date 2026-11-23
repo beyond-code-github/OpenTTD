@@ -127,3 +127,21 @@ Reading: the lazy-1 refusals ([grid] [keep apart] [length] [node] [crossing piec
 - No stage B (stage A never Optimal).
 
 Stops: the brief's step 5 (the side of each added pair fixed from the previous round's drawing) is not run. `sides_from` fixes the side of every pair (not only the added ones), writes plain rows for all of them, ignores `only_pairs` and is incompatible with `keep_apart_out`, so the brief's mechanism does not exist in the options as named; a probe would need a production option (fix only the pairs in a list). Question for the orchestrator: add that option, or run `sides_from` over all pairs as the nearest reading.
+
+
+# lazy-4 Part B: the offers 3 + D443 infeasibility is Shape's (pinned, fixed)
+
+Diagnosis (T2, flex placed on the unflexed variant; `build-rel`, one solve at a time, stage A round 0 = no keep-apart rows):
+
+| offers | D443 | stage A round 0 |
+|---|---|---|
+| 1 | off | Optimal, 2.4 s (lazy-3) |
+| 3 | off | no result in 15 s (Error, 17.9 s): not Infeasible |
+| 1 | on | Infeasible, 72 ms; conflict [piece] [corridor] [cross]: `cross 2` (B1 x C2), `cross 12` (D1 x E2), `cross 18` (prio:B1 x C2), `cross 19` (prio:E2 x D1); needed tags `cross 12`, `cross 19` |
+| 3 | on | Infeasible, 221 ms (lazy-3) |
+
+So D443 alone causes it, with any offers. Pieces: E2 (chain of prio:E2) and prio:E2 have one piece and no flex, as the beside-parent rule says (the chain gets none, `FreeOnePieceStretch`'s last clause holds); the chain/copy pieces still match, `CheckPlanarShapePromise` reports no H8 breach (and with D443 on it stops at H1 first, as it checks flex against the default channel clause). The flex that breaks it is on the crosser: D1 crosses E2 (crossing 12, in D1's structure) and prio:E2 (crossing 19, 12's mirror, so in the structure's copy span) with flex between them (event pieces 25 and 37 at offers 3: six flex pairs; 9 and 13 at offers 1), and the same for C2 between B1 (crossing 2) and prio:B1 (crossing 18). The stretch between a crossing and its own copy's crossing was kept un-free only by the channel clause (a track and its copy are on one channel); the structure clause tests "both in the structure" or "both in its copy span", and misses one in each. D443 turns the channel clause off, so the stretch got S-bends the corridor rows (the copy at a fixed side offset along the chain) cannot follow: the crosser would have to cross the two lanes on different pieces.
+
+Test: "a beside track's parent chain gets no S-bend offers its copy cannot follow (D421, D442)" (`[planarshape]`, T2, offers 3, D443 on): chain and copy have no flex, and for every crosser of both a crossing and its copy's crossing at the same place, adjacent in the crosser's events, no flex between them and both on one piece. Red before the fix: C2 (B1/prio:B1) and D1 (E2/prio:E2) have 6 flex pairs each between the two crossings and sit on pieces 24 to 36 and 25 to 37; 4 of 25 assertions failed.
+
+Fix (`FreeOnePieceStretch`): a stretch between a crossing and its mirror (its beside copy's crossing of the same crosser) is not free, whatever the channel clause says. Green; `[planarshape]` 39 of 39. Stage A round 0 on T2 offers 3 + D443: Optimal, 5.7 s, 169 pairs fail on its points (round 1 with those 169 pairs, 676 binaries, hits the 15 s cap). Stage B from that drawing is still Infeasible with no keep-apart rows (conflict families: 6; node turns F6/F8 fail on the contracted variant, as in lazy-3 offers 1): a separate, Slots-side question, not addressed here.
