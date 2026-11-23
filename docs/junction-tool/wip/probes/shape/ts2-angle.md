@@ -36,3 +36,26 @@ Minimal conflict, 8 rows: `piece A3 1`, `port N gap A2`, `port N gap A3`, `node 
 
 - At 45 degrees the W/E lane-spacing conflict of ts2-diag.md is gone (no `port E gap`, `port W gap`, `land` or `curve` row is in the minimal set), but the base is still Infeasible at the default spacing: the conflict moves to the N ports. It is now the three crossing rows (`cross 0-2`, A2 x B1, A3 x B1, A3 x B2 at 45 degrees) with the one-tile N gaps of A2 and A3, A3's last piece, and A3's node (`node 1`, `clear 5 0 4`). The rows name the conflict; why they cannot fit together (for instance the two diagonals one tile apart at the N ports crossing the separator at 45 degrees) is a reading of mine, not shown by this probe.
 - So the angle alone does not make TS2 drawable at the default port spacing; whether a wider N gap (not tried, outside this brief) or a rule (`cross` or `clear 5 0 4` too strict) is the cause is the next question.
+
+## lattice flex (shape-3 probe)
+
+Head 758d142ac6 on wt-e1. Hidden test `planar shape: TS2 with lattice flex` `[.][shapeprobe]` (Release `build-rel`). Probe flag: `lattice_flex = false` as a new last parameter of `PlacePlanarShapeFlex` (and a `lattice` parameter of the static `FreeOnePieceStretch`, default false); true turns off only the channel clause (`channel[p] == channel[q]`) of `FreeOnePieceStretch`; the one-structure and copy-span clauses and the beside-parent clause stay. Production callers are unchanged (flag off).
+
+Both variants (Shape's base, flex-stripped, and the 45-degree variant) were taken flex-stripped, flex placed by `PlacePlanarShapeFlex(v, why, true, lattice)`, cells refined (3 dummies), drawn at the default spacing with the DrawnFixture options, `least_extra = 0`, 15 s cap.
+
+| variant | lattice clause | flex pairs placed | status | ms | rows x columns | inserts used |
+|---|---|---|---|---|---|---|
+| base (90 degrees) | on (flex C) | 34 | Infeasible | 41 | 1667 x 391 | 0 |
+| base (90 degrees) | off | 34 | Infeasible | 38 | 1667 x 391 | 0 |
+| 45 degrees | on (flex C) | 34 | Infeasible | 37 | 1606 x 391 | 0 |
+| 45 degrees | off | 34 | Infeasible | 37 | 1606 x 391 | 0 |
+
+The lattice flag changes nothing here: the flex placed is identical with it on and off (same tracks, same positions, 34 pairs each), so in TS2 as flex-stripped the channel clause is not what withholds flex. No Optimal drawing, so no domain verdict and no used inserts.
+
+Conflicts with flex offered (lattice off), first conflict of the solver:
+- 90 degrees: 119 rows (piece rows of AB1, AB2, AB3, A2, A3, B2, B3; `port N gap A2/A3`, `port E gap B3`, `port W gap AB2/AB3`; `node 1`; `cross 0`, `cross 2`; `curve A2`; `end 0`; `land 1`; many `clear` and `room` rows of cells 1, 2, 6). Not filtered (budget).
+- 45 degrees: 39 rows (`piece` A2 x5, A3 x3, B1 0; `port N gap A2/A3`, `port E gap B2`, `port W gap AB2`; `cross 0-2`; `end 0`; `land 0`; `clear`/`room` rows of cells 5 and 8). Deletion filter stopped at the 30-solve cap after 29 of its 39 rows had been tried: skipping `port N gap A2` alone, or `port N gap A3` alone, turns it Optimal (244 and 263 ms); every other row skipped stayed Infeasible. The 13 rows left in the list (`port N gap A2`, `port N gap A3`, `clear 5 3 9`, `clear 5 3 16`, `clear 5 5 2`, `clear 5 6 2`, `clear 5 8 2`, `room 5 8 2`, `clear 5 8 10`, `clear 5 8 12`, `clear 5 8 14`, `clear 8 0 8`, `clear 8 0 10`) are not a proved minimal set.
+
+Reading:
+- Offering S-bends on every stretch does not make TS2 drawable at the default spacing at 90 or at 45 degrees, and at these two shapes the lattice clause is not the limit (the placement is the same).
+- At 45 degrees the N gaps of A2 and A3 are each individually sufficient to remove (as in shape-2: the one-tile N port gap is the binding row); whether a wider N gap alone makes it Optimal with flex is not tried.

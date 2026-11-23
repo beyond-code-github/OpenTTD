@@ -157,9 +157,10 @@ std::vector<PlanarFaceWalls> PlanarShapeFaceWalls(const PlanarShapeVariant &v);
  * @param v The shaped variant; every track's flex is replaced.
  * @param why Receives "no flex: ..." on an internal inconsistency.
  * @param end_pieces Flex C (D420, the default): a free stretch of two or more pieces also gets the pairs, on its first and its last piece only; false is D402 (one-piece stretches only), the toggle.
+ * @param lattice_flex A probe (shape-3): offer flex on stretches between crossings of one channel too (the lattice clause off).
  * @return False only on an internal inconsistency; the rule has no failure.
  */
-bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = true);
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces = true, bool lattice_flex = false);
 
 /**
  * The pairs of lines H14 compares: per channel, its whole Line tracks without parts, each later one paired with the first earlier one it is not a leg of one node with, none when every earlier one is such a leg (D388 (a), D403).

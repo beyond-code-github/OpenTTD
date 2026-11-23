@@ -152,7 +152,7 @@ bool ParentChain(const PlanarTrackMap &map, const std::vector<PlanarStructureSit
 	return false;
 }
 
-static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k);
+static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k, bool lattice = false);
 
 std::vector<std::tuple<uint32_t, uint32_t, uint32_t, std::vector<size_t>, std::vector<size_t>, bool>> PlanarSpinePairs(const PlanarTrackMap &map, const PlanarStructureVariant &structure, bool every_pair)
 {
@@ -943,9 +943,10 @@ static constexpr bool H14_IN_PROMISE = true;
  * @param v The variant.
  * @param t The track.
  * @param k The stretch, 0 <= k <= the track's event count (0 from the track's start, the last to its end).
+ * @param lattice A probe (shape-3): the channel clause is off, so stretches between crossings of one channel are free too.
  * @return Whether it is free.
  */
-static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k)
+static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t k, bool lattice)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	if (t >= map.tracks.size() || map.tracks[t].kind != PlanarTrack::Kind::Line || k > map.events[t].size()) return false;
@@ -960,7 +961,7 @@ static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t 
 		}
 		const std::vector<uint32_t> &channel = v.structure.channel_of_line;
 		const uint32_t p = map.tracks[partner(c0)].line, q = map.tracks[partner(c1)].line;
-		if (p >= channel.size() || q >= channel.size() || channel[p] == channel[q]) return false;
+		if (p >= channel.size() || q >= channel.size() || (!lattice && channel[p] == channel[q])) return false;
 	}
 	for (uint32_t b = 0; b < map.tracks.size(); b++) {
 		if (map.tracks[b].kind == PlanarTrack::Kind::Line) continue;
@@ -970,7 +971,7 @@ static bool FreeOnePieceStretch(const PlanarShapeVariant &v, uint32_t t, size_t 
 	return true;
 }
 
-bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces)
+bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_pieces, bool lattice_flex)
 {
 	const PlanarTrackMap &map = v.structure.map;
 	if (v.tracks.size() != map.tracks.size()) {
@@ -990,7 +991,7 @@ bool PlacePlanarShapeFlex(PlanarShapeVariant &v, std::string &why, bool end_piec
 			/* One piece: the stretch's first and last pieces are the same piece. */
 			const size_t first_piece = k == 0 ? 0 : track.event_piece[k - 1];
 			const size_t last_piece = k == events ? track.pieces.size() - 1 : track.event_piece[k];
-			if (!(first_piece == last_piece || end_pieces) || !FreeOnePieceStretch(v, t, k)) continue;
+			if (!(first_piece == last_piece || end_pieces) || !FreeOnePieceStretch(v, t, k, lattice_flex)) continue;
 			/* Insert the pairs after piece p of stretch k. */
 			const auto place_at = [&](uint32_t p) {
 				const int h = track.pieces[p];
