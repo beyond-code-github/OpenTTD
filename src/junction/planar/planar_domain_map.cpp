@@ -10,6 +10,8 @@
 #include "../../stdafx.h"
 
 #include "planar_domain_map.h"
+#include "planar_draw.h"
+#include "planar_shape_layer.h"
 
 #include "../../core/format.hpp"
 
@@ -114,7 +116,22 @@ PlanarDomainInput PlanarDomainInputOf(const PlanarShapeVariant &v, const std::ve
 		return input;
 	}
 	input.tracks = points;
-	input.nodes = NodesOf(v, points);
+	/* A beside track (a copy or a prio row, D421): the drawing leaves its opening and closing steps implicit, so the domain input adds them: the step from its from-node's point to its first point and from its last point to its to-node's point. */
+	const PlanarTrackMap &map = v.structure.map;
+	for (uint32_t b = 0; b < map.tracks.size(); b++) {
+		if (map.part_of[b] != UINT32_MAX || input.tracks[b].empty() || v.tracks[b].pieces.empty()) continue;
+		std::vector<uint32_t> chain;
+		if (!ParentChain(map, v.structure.sites, b, chain)) continue;
+		const int side = map.Side(b, 0, chain[0], 0);
+		if (side == 0) continue;
+		const std::array<int, 2> opening = PlanarBesideOpening(v.tracks[b].pieces.front(), side);
+		const std::array<int, 2> closing = PlanarBesideClosing(v.tracks[b].pieces.back(), side);
+		DomainPoints &track = input.tracks[b];
+		const std::array<int, 2> first = track.front(), last = track.back();
+		track.insert(track.begin(), {first[0] - opening[0], first[1] - opening[1]});
+		track.push_back({last[0] + closing[0], last[1] + closing[1]});
+	}
+	input.nodes = NodesOf(v, input.tracks);
 
 	uint32_t k = 0;
 	for (const PlanarStructure &s : v.structure.structures) {
