@@ -1182,6 +1182,74 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 		}
 	}
 
+	/* D438: a crosser of a tunnel in along mode (options.along_from): its along pieces (heading equal to the separator's mod 4, immediately after the crossing piece) and the piece that leaves the line after them. */
+	struct AlongRun {
+		size_t structure;
+		uint32_t crossing; ///< The map's crossing.
+		std::vector<uint32_t> along; ///< Piece indices on the crosser.
+		uint32_t leaving; ///< UINT32_MAX when the track ends with the along pieces.
+	};
+	const auto along_runs = [&](uint32_t crosser) {
+		std::vector<AlongRun> out;
+		if (options.along_from == nullptr || crosser >= nt || crosser >= options.along_from->size() || v.tracks[crosser].event_piece.size() != map.events[crosser].size()) return out;
+		const std::vector<double> &mode = (*options.along_from)[crosser];
+		for (size_t si = 0; si < v.structure.structures.size(); si++) {
+			const PlanarStructure &st = v.structure.structures[si];
+			if (st.separator >= nt || st.kinds != 2 || v.structures[si].end_run[1] < 0 || v.tracks[st.separator].event_piece.size() != map.events[st.separator].size()) continue;
+			for (size_t k = 0; k < map.events[crosser].size(); k++) {
+				if (k >= mode.size() || mode[k] < 0.5 || std::ranges::find(st.crossings, map.events[crosser][k]) == st.crossings.end()) continue;
+				const auto &pieces = v.tracks[crosser].pieces;
+				const uint32_t cp = v.tracks[crosser].event_piece[k];
+				const int axis = ((v.tracks[st.separator].pieces[v.tracks[st.separator].event_piece[0]] % 8) + 8) % 8;
+				AlongRun run{si, map.events[crosser][k], {}, UINT32_MAX};
+				uint32_t next = cp + 1;
+				while (next < pieces.size() && ((pieces[next] % 8) + 8) % 8 % 4 == axis % 4) run.along.push_back(next++);
+				if (run.along.empty()) continue;
+				if (next < pieces.size()) run.leaving = next;
+				out.push_back(std::move(run));
+			}
+		}
+		return out;
+	};
+	for (uint32_t crosser = 0; crosser < nt && options.along_from != nullptr; crosser++) {
+		for (const AlongRun &run : along_runs(crosser)) {
+			const PlanarStructure &st = v.structure.structures[run.structure];
+			/* The span piece: the separator's piece at its crossings (they share one, checked below). */
+			const uint32_t sp_piece = piece_of[run.crossing][map.crossings[run.crossing].a == st.separator ? 0 : 1];
+			const std::array<int, 2> step = PlanarModel::STEP[((v.tracks[st.separator].pieces[sp_piece] % 8) + 8) % 8];
+			const std::array<int, 2> normal = {step[1], -step[0]};
+			const auto &s0 = point[st.separator][sp_piece];
+			const auto &s1 = point[st.separator][sp_piece + 1];
+			const int end = 2 * v.structures[run.structure].end_run[1];
+			const std::string on = fmt::format("along {} on", run.crossing), clear = fmt::format("along {} clear", run.crossing);
+			const auto hold = [&](const std::array<uint32_t, 2> &p, int need) {
+				Terms lo, hi;
+				for (int d = 0; d < 2; d++) {
+					lo.emplace_back(p[d], step[d]);
+					lo.emplace_back(s0[d], -step[d]);
+					hi.emplace_back(s1[d], step[d]);
+					hi.emplace_back(p[d], -step[d]);
+				}
+				row(std::move(lo), need, JunctionMilp::INF, clear);
+				row(std::move(hi), need, JunctionMilp::INF, clear);
+			};
+			for (const uint32_t k : run.along) {
+				for (const uint32_t e : {k, k + 1}) {
+					const auto &p = point[crosser][e];
+					Terms t;
+					for (int d = 0; d < 2; d++) {
+						t.emplace_back(p[d], normal[d]);
+						t.emplace_back(s0[d], -normal[d]);
+					}
+					eq(std::move(t), 0, on);
+					hold(p, end);
+				}
+			}
+			/* A leaving diagonal starting at the clearance's edge would enter the portal tile: one half tile further in. */
+			if (run.leaving != UINT32_MAX) hold(point[crosser][run.leaving], end + 1);
+		}
+	}
+
 	/* Spans: the separator's crossings, their gaps, end runs and reach. */
 	for (size_t s = 0; s < v.structure.structures.size(); s++) {
 		const PlanarStructure &structure = v.structure.structures[s];
@@ -1529,6 +1597,19 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 						};
 						if (sanctioned(w[i], w[j]) || sanctioned(w[j], w[i])) {
 							skip("span");
+							continue;
+						}
+						/* D438: in along mode the span piece is not kept apart from the along pieces and the leaving piece; their rows are `along`. */
+						const auto along_pair = [&](const PlanarCellWall &sw, const PlanarCellWall &other) {
+							if (!is_span(sw) || other.track >= nt) return false;
+							for (const AlongRun &run : along_runs(other.track)) {
+								if (v.structure.structures[run.structure].separator != sw.track) continue;
+								if (other.piece == run.leaving || std::ranges::find(run.along, other.piece) != run.along.end()) return true;
+							}
+							return false;
+						};
+						if (along_pair(w[i], w[j]) || along_pair(w[j], w[i])) {
+							skip("along");
 							continue;
 						}
 						if (ka != nullptr) ka->kept = "strict span";
