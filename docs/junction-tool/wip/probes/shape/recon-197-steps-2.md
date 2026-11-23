@@ -269,3 +269,9 @@ Rows: 13, mixed rows 11.
 - Trunks (leaving a merge, arriving at a split) never step when the other end is a crossing (0 of 20); with a node 13 of 27, with a port 9 of 15.
 - Fork legs: 1 of 2 steps. Kinds: fray diverging 8 of 8; join diverging 20 of 20; lane split diverging 21 of 22; lane merge diverging 10 of 11; every other kind x role has both outcomes.
 - Mixed rows (both step and no step): 10 of 16 in dir x role x other end, 7 of 7 in dir x role, 4 of 4 by node kind, 11 of 13 in kind x dir x role.
+
+## Do V's steps need lengths? (orchestrator tally, 2026-11-24)
+Per node-adjacent stretch, whether Shape's headings for it include a diagonal piece (a diagonal's length can absorb a sideways move, so there a step is a length-coupled choice; on an axis-only stretch only a step moves the track sideways):
+- stepped: 98 rows, 58 on stretches with a diagonal, 40 axis only;
+- no step: 88 rows, 55 with a diagonal, 33 axis only.
+Reading: about 60% of V's node-adjacent steps sit where a longer diagonal could have done the sideways move, so V's S-bends are not forced by lane order alone; and axis-only stretches go both ways (40 stepped, 33 not), so lane order decides those, not the stretch kind.
