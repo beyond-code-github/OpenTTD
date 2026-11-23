@@ -1,3 +1,27 @@
+# sides-5: how many undecided keep-apart pairs can never come close? (D431)
+Measured in the hidden `[.][sidesmeasure]` test and the 197 read (`SidesAccumulate`; no production change, no solves). Undecided = neither walk_strict nor facing forces a side. Pair-instances are summed over every legal drawing incl. off-interface (as sides-3/4). The margin columns are per pair identity (its tag, with the same tracks and pieces in every drawing; identities whose tracks/pieces differ between drawings are skipped, count in brackets), the least over drawings of the best candidate's margin in half tiles (so >= 0 holds on a legal drawing by definition; 197 is one drawing, not legal, V's own points, so its row is one sample). Rule 2: (i,j) implied when a face wall k has (i,k) and (k,j) both forced or implied on the same direction s and spacing(i,j) <= spacing(i,k) + spacing(k,j); iterated to a fixed point; checked on every drawing that the implied candidate holds.
+
+| fixture | pairs (instances) | decided | implied (rule 2) | still undecided | identities still undecided (tag-conflicts skipped) | least margin >=0 / >=2 / >=4 / >=8 |
+|---|---|---|---|---|---|---|
+| X1 | 3304 | 1060 (32.1%) | 0 (0.0%) | 2244 (67.9%) | 12 (26) | 100.0% / 66.7% / 25.0% / 0.0% |
+| X2 | 2965 | 780 (26.3%) | 0 (0.0%) | 2185 (73.7%) | 31 (29) | 100.0% / 64.5% / 45.2% / 22.6% |
+| M1 | 397 | 152 (38.3%) | 0 (0.0%) | 245 (61.7%) | 27 (27) | 100.0% / 81.5% / 63.0% / 11.1% |
+| K1 | 1681 | 1084 (64.5%) | 0 (0.0%) | 597 (35.5%) | 19 (11) | 100.0% / 47.4% / 42.1% / 5.3% |
+| L1 | 2792 | 748 (26.8%) | 0 (0.0%) | 2044 (73.2%) | 23 (6) | 100.0% / 39.1% / 21.7% / 0.0% |
+| Y1 | 290 | 88 (30.3%) | 0 (0.0%) | 202 (69.7%) | 22 (20) | 100.0% / 77.3% / 54.5% / 4.5% |
+| P1 | 0 | 0 (0) | 0 (0) | 0 (0) | 0 (0) | 0.0% / 0.0% / 0.0% / 0.0% |
+| BR1 | 122 | 29 (23.8%) | 0 (0.0%) | 93 (76.2%) | 13 (14) | 100.0% / 61.5% / 23.1% / 0.0% |
+| TT1 | 20 | 3 (15.0%) | 0 (0.0%) | 17 (85.0%) | 10 (3) | 100.0% / 80.0% / 40.0% / 0.0% |
+| TS2 | 22 | 9 (40.9%) | 0 (0.0%) | 13 (59.1%) | 13 (0) | 100.0% / 69.2% / 46.2% / 7.7% |
+| 197 | 2512 | 741 (29.5%) | 0 (0.0%) | 1771 (70.5%) | 1771 (0) | 100.0% / 72.3% / 58.6% / 40.3% |
+
+Rule 2 failures: 0 on every fixture and 197 (nothing implied, so nothing to fail).
+
+Reading:
+- Rule 2 (transitivity on one direction) implies 0 pairs everywhere: chains i->k->j do occur among forced pairs but with different directions s (a turn between them, e.g. X1 `sep 3 1 7` via k with spacings 2/2+1), and a chain across two directions bounds neither (not examined further whether a same-direction chain is already walk_strict-forced itself). So 56-85% of pairs on the fixtures and 70.5% on 197 stay undecided.
+- Empirically (samples only): of the still-undecided pair identities, 39-82% on the fixtures are always at least 2 half tiles apart and 22-63% at least 4; on 197 (one drawing) 72% / 59% / 40% at >= 2 / 4 / 8. The fixture samples are small (10-31 identities; 3-29 more skipped by tag change, most of them on X1, X2, M1, Y1), so these are only an upper bound on what a sound rule could prune.
+- So no sound pruning from forced sides alone was found; a pruning rule would need another source of distance.
+
 # sides-4: walk_strict's guarantee counted walls the face cuts at crossings (D431)
 Verdict: class (a), but not a units bug. Units are consistent (a wall's contribution is `coefficient * step . normal`, and the rows' `s . (q - p)` moves the same amount: an axis piece coefficient 2 moves 2 per length unit on one axis, a diagonal piece coefficient 1 moves 1 on each axis). The 1 was lost in `guaranteed`: it counted a wall strictly between the pair at its least length even when the face cuts that wall at a crossing. The face walks such a wall only up to the crossing, which can lie anywhere on the piece, so it guarantees nothing.
 - X1 `sep 1 2 4` (B1 `0*2,1*2,0*10`; B1 p1 diagonal (11,14)-(13,12), s = (-1,-1), spacing 2): the walk between is B1 p2 (heading 0, coefficient 2), cut at the crossing with A1 at (13,11) (A1 y = 11, from (4,11)). `guaranteed` = 2 (B1 p2 at its least) >= 2, so the rule certifies candidate 0. The walked part of B1 p2 is (13,12) to (13,11): 1. Rows: q (13,11) against p (13,12) is s . (0,-1) = 1 < 2, margin -1.
