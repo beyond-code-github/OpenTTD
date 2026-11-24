@@ -1185,6 +1185,15 @@ PlanarDrawResult CheckPlanarDrawable(const PlanarShapeVariant &v, double seconds
 			}
 		}
 	}
+	/* Coverage (D384): a prio row's travel along its path is exactly rules.coverage (half tiles, as the bay rows). */
+	if (options.coverage) {
+		for (uint32_t t = 0; t < nt; t++) {
+			if (map.tracks[t].kind != PlanarTrack::Kind::Row) continue;
+			Terms travel;
+			for (const Length &len : length[t]) travel.emplace_back(len.variable, len.coefficient);
+			eq(std::move(travel), rules.coverage, fmt::format("coverage {}", map.tracks[t].name));
+		}
+	}
 	/* Curve spacing (D420, SPEC-slots-lengths §8.2): Shape's bends along every route path; flex and step middles count as travel only (§10.3). */
 	if (options.curves) {
 		struct Bend {

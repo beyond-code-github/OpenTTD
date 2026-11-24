@@ -7109,6 +7109,136 @@ TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows, 
 	CheckContractedDrawingSatisfiesStageB("T2", "stagea-rules");
 }
 
+/** D384: with `coverage`, stage B's program has one `coverage <row>` equality per Row track at rules.coverage; on fixed points a row shorter than that breaks it and a row exactly that long holds it. T1's pinned drawing (`t1-final-curves`) has rows far shorter than the coverage. */
+TEST_CASE("planar draw: coverage rows hold a prio row to exactly its coverage (T1, D384)", "[junction][planardraw]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant v;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], v, why));
+	for (PlanarShapeTrack &track : v.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves-stagea.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		std::map<std::string, std::vector<int>> heads;
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	Contracted plain_cv;
+	plain_cv.v = plain;
+	plain_cv.points = cv->points;
+	X1Fixture fb(plain);
+	const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
+	const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
+	PlanarDrawOptions sb, listing;
+	StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
+	sb.build_only = true;
+	sb.program_out = true;
+	sb.coverage = true;
+	const PlanarDrawResult result = CheckPlanarDrawable(plain, 15.0, sb);
+	REQUIRE(result.status == "built");
+
+	const PlanarTrackMap &map = plain.structure.map;
+	const double coverage = plain.structure.rules.coverage;
+	std::vector<uint32_t> rows;
+	for (uint32_t t = 0; t < map.tracks.size(); t++) {
+		if (map.tracks[t].kind == PlanarTrack::Kind::Row) rows.push_back(t);
+	}
+	REQUIRE(!rows.empty());
+	size_t written = 0;
+	for (const PlanarProgram::Row &row : result.program.rows) {
+		if (!row.tag.starts_with("coverage ")) continue;
+		written++;
+		/* T1's rows are one axis piece each (travel = 2 x its length variable); the program divides an all-integer row by its gcd, so the stored row is the length variable at coverage / 2. */
+		CHECK(row.terms.size() == 1);
+		CHECK(row.lower * 2 == coverage);
+		CHECK(row.upper * 2 == coverage);
+	}
+	CHECK(written == rows.size());
+
+	/* Fixed points: the pinned final drawing's rows are shorter than the coverage. */
+	std::vector<Points> points(fb.n);
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves.drawing.txt");
+		REQUIRE(in.good());
+		std::string line;
+		while (std::getline(in, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ls(line);
+			std::string word, track_name;
+			ls >> word >> track_name;
+			REQUIRE(word == "track");
+			const uint32_t t = fb.idx.at(track_name);
+			for (int x, y; ls >> x >> y;) points[t].push_back({x, y});
+		}
+	}
+	const auto travel = [&](uint32_t t) {
+		int sum = 0;
+		for (size_t i = 0; i + 1 < points[t].size(); i++) sum += std::max(std::abs(points[t][i + 1][0] - points[t][i][0]), std::abs(points[t][i + 1][1] - points[t][i][1]));
+		return sum;
+	};
+	const auto broken_coverage = [&](const std::vector<Points> &at) {
+		std::set<std::string> out;
+		for (const std::string &tag : CheckPlanarProgramOnPoints(result.program, at).broken) {
+			if (tag.starts_with("coverage ")) out.insert(tag);
+		}
+		return out;
+	};
+	for (const uint32_t t : rows) REQUIRE(travel(t) < coverage);
+	const std::set<std::string> shorter = broken_coverage(points);
+	CHECK(shorter.size() == rows.size());
+
+	/* Each row lengthened along its first piece to exactly the coverage: the coverage rows hold. */
+	std::vector<Points> exact = points;
+	for (const uint32_t t : rows) {
+		const int delta = static_cast<int>(coverage) - travel(t);
+		const int *step = STEPS[((plain.tracks[t].pieces[0] % 8) + 8) % 8];
+		for (size_t i = 1; i < exact[t].size(); i++) {
+			exact[t][i][0] += delta * step[0];
+			exact[t][i][1] += delta * step[1];
+		}
+		REQUIRE(static_cast<int>(coverage) == [&] { int sum = 0; for (size_t i = 0; i + 1 < exact[t].size(); i++) sum += std::max(std::abs(exact[t][i + 1][0] - exact[t][i][0]), std::abs(exact[t][i + 1][1] - exact[t][i][1])); return sum; }());
+	}
+	std::string left;
+	for (const std::string &tag : broken_coverage(exact)) left += " [" + tag + "]";
+	INFO("coverage rows still broken:" << left);
+	CHECK(left.empty());
+}
+
 /** Contraction diagnosis (hidden): the pinned fixtures before and after ContractedVariant, to stdout; PLANAR_CDIAG_T = 1 or 2 selects the topology. */
 TEST_CASE("contraction diag", "[.][contractiondiag]")
 {
@@ -7260,6 +7390,7 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 	StageBOptions(fb, cv, ref_port_zero, ref_along, sb, listing);
 	const bool b_curves = std::getenv("PLANAR_STAGEB_CURVES") != nullptr;
 	if (b_curves) sb.curves = sb.bays = true;
+	if (std::getenv("PLANAR_COVERAGE") != nullptr) sb.coverage = listing.coverage = true;
 	const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
 	out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
 	flush();
@@ -7366,6 +7497,10 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		if (std::getenv("PLANAR_STAGEA_NODEGAPS") != nullptr) {
 			sa.node_gaps = true;
 			sa.node_gap_from = nullptr;
+		}
+		if (std::getenv("PLANAR_COVERAGE") != nullptr) {
+			sa.coverage = true;
+			sa.program_out = true; // to count the `coverage` rows
 		}
 		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
@@ -7562,6 +7697,10 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		if (sa.coverage) {
+			const auto cov_rows = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("coverage "); });
+			out << std::format("- {} stage A coverage rows: {}\n", tag, cov_rows);
+		}
 		if (sa.grid_conditional) {
 			const auto grid_runs = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("grid run "); });
 			out << std::format("- {} stage A grid run binaries: {}\n", tag, grid_runs);
@@ -8481,6 +8620,10 @@ TEST_CASE("planar slots: stage A turn breaks classified (step 2c)", "[.][slotsst
 		}
 		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
 		out << std::format("- {} stage A (no keep-apart rows, tidy {}, K {}, flank rows {}{}{}): {} {} ms, flank rows written {}, cusps forced {}, missing {}\n", tag, sa.tidy ? "on" : "off", sa.flank_k, sa.flank_turn ? "on" : "off", diag_elastic ? ", elastic on flank" : "", diag_lp ? ", LP grid off" : "", a.status, static_cast<int>(a.ms), a.flank_rows, a.cusps_forced, a.cusps_missing.size());
+		if (sa.coverage) {
+			const auto cov_rows = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("coverage "); });
+			out << std::format("- {} stage A coverage rows: {}\n", tag, cov_rows);
+		}
 		if (sa.grid_conditional) {
 			const auto grid_runs = std::ranges::count_if(a.program.rows, [](const PlanarProgram::Row &r) { return r.tag.starts_with("grid run "); });
 			out << std::format("- {} stage A grid run binaries: {}\n", tag, grid_runs);
