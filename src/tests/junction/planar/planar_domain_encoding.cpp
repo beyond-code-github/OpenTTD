@@ -7661,6 +7661,70 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		const std::string tag = std::format("STEP2B {}", name);
 		out << std::format("\n### {}\n\n", tag);
 
+		if (std::getenv("PLANAR_DUMP_FLEX") != nullptr) {
+			/* D449 P1: per track its pieces (heading:kind), and per flex middle its stretch context, so an offline lengths file maps back to roles. */
+			const PlanarTrackMap &mp = v.structure.map;
+			const PlanarTopology &ex = mp.expanded;
+			const auto kind_name = [&](uint32_t t) { return mp.tracks[t].kind == PlanarTrack::Kind::Line ? "Line" : mp.tracks[t].kind == PlanarTrack::Kind::Copy ? "Copy" : "Row"; };
+			const std::vector<PlanarNodeCusp> cusps = PlanarNodeCusps(v);
+			/* One end of stretch k of track t: crossing, port or node (role, sibling side relative to insert direction d). */
+			const auto end_text = [&](uint32_t t, uint32_t k, bool at_start, int d) -> std::string {
+				const size_t nev = mp.events[t].size();
+				const bool track_end = at_start ? k == 0 : k == nev;
+				if (!track_end) return "crossing";
+				if (t >= ex.lines.size()) return "unknown";
+				const PlanarEnd &e = at_start ? ex.lines[t].from : ex.lines[t].to;
+				if (e.port) return "port";
+				const uint32_t n = e.index;
+				const PlanarNode &node = ex.nodes[n];
+				const bool is_split = node.IsSplit();
+				const PlanarStructureSite *site = nullptr;
+				for (const PlanarStructureSite &s : v.structure.sites) {
+					if (s.node == n) site = &s;
+				}
+				const bool is_leg = at_start == is_split;
+				std::string role = "trunk", rel = "n/a";
+				if (is_leg) {
+					role = site == nullptr ? "leg" : site->straight == UINT32_MAX ? "diverging" : (site->straight == t ? "straight" : "diverging");
+					const std::vector<uint32_t> &legs = at_start ? node.out : node.in;
+					int sv = 0;
+					for (const uint32_t s : legs) {
+						if (s == t) continue;
+						const uint32_t ss = at_start ? 0 : static_cast<uint32_t>(mp.events[s].size());
+						const int sd = mp.Side(s, ss, t, k);
+						if (sd != 0 && sv == 0) sv = sd;
+					}
+					rel = sv == 0 ? "nosib" : d == -sv ? "away" : "toward";
+				}
+				return std::format("{}:{}:{}:{}", is_split ? "split" : "merge", n, role, rel);
+			};
+			for (uint32_t t = 0; t < v.tracks.size(); t++) {
+				const PlanarShapeTrack &st = v.tracks[t];
+				out << std::format("FLEXT {} {} t {} pieces", name, mp.tracks[t].name, t);
+				for (size_t i = 0; i < st.pieces.size(); i++) {
+					const bool mid = std::ranges::find(st.flex, static_cast<uint32_t>(i)) != st.flex.end();
+					const bool flank = std::ranges::find(st.flex, static_cast<uint32_t>(i + 1)) != st.flex.end() || (i > 0 && std::ranges::find(st.flex, static_cast<uint32_t>(i - 1)) != st.flex.end());
+					out << std::format(" {}:{}", st.pieces[i], mid ? "M" : flank ? "F" : "X");
+				}
+				out << "\n";
+				const size_t nev = mp.events[t].size();
+				for (uint32_t k = 0; k <= nev; k++) {
+					const size_t from = k == 0 ? 0 : st.event_piece[k - 1];
+					const size_t to = k < st.event_piece.size() ? st.event_piece[k] : st.pieces.size() - 1;
+					bool diagonal = false;
+					for (size_t i = from; i <= to && i < st.pieces.size(); i++) diagonal |= (st.pieces[i] % 2) != 0;
+					for (const uint32_t m : st.flex) {
+						if (m < 1 || m < from || m > to) continue;
+						const int d = st.pieces[m] > st.pieces[m - 1] ? 1 : -1;
+						bool cusp = false;
+						for (const PlanarNodeCusp &c : cusps) cusp |= c.track == t && c.insert == m;
+						out << std::format("FLEXM {} {} {} t {} m {} k {} d {} diag {} cusp {} start {} end {}\n", name, mp.tracks[t].name, kind_name(t), t, m, k, d, diagonal ? 1 : 0, cusp ? 1 : 0, end_text(t, k, true, d), end_text(t, k, false, d));
+					}
+				}
+			}
+			for (const PlanarNodeCusp &c : cusps) out << std::format("FLEXC {} {} node {} insert {} missing '{}'\n", name, mp.tracks[c.track].name, c.node, static_cast<int>(c.insert), c.missing);
+		}
+
 		/* Stage A: no keep-apart rows, tidy on (D447). */
 		X1Fixture fa(v);
 		PlanarDrawOptions sa = SlotsStageADefaults(fa);
