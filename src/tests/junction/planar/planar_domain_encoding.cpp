@@ -7632,7 +7632,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 	std::ofstream md(std::getenv("PLANAR_STEP2B_OUT") != nullptr ? std::getenv("PLANAR_STEP2B_OUT") : "slots-step2b.md", std::ios::app);
 	for (const std::string name : {"T1", "T2", "T3"}) {
 		if (hub_env != nullptr && name != hub_env) continue;
-		if (hub_env == nullptr && name == "T3" && std::getenv("PLANAR_D449_SLOTS") == nullptr) continue; // T3 only on request or for the D449 P2 probe
+		if (hub_env == nullptr && name == "T3" && std::getenv("PLANAR_D449_SLOTS") == nullptr && std::getenv("PLANAR_D449_LP") == nullptr) continue; // T3 only on request or for the D449 P2 probe
 		std::ostringstream out;
 		const auto flush = [&]() {
 			md << out.str() << std::flush;
@@ -7926,6 +7926,38 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
 		sa.node_flank = std::getenv("PLANAR_NO_NODE_FLANK") == nullptr;
 		sa.node_cusp = std::getenv("PLANAR_NO_NODE_CUSP") == nullptr;
+		/* PLANAR_D449_LP=<threshold> (D449 P3): stage A as its LP relaxation (every group continuous, grid off); its piece lengths go to a lock file in the PLANAR_STAGEA_LOCK_FILE format, and the locked path below reads it with curve_flex_above = the threshold (inserts at or above it stay on, the rest are held at 0). */
+		const char *lp_env = std::getenv("PLANAR_D449_LP");
+		const bool lp_on = lp_env != nullptr;
+		if (lp_on) {
+			PlanarDrawOptions lp = sa;
+			lp.grid = false;
+			lp.continuous = {"point", "axis", "diagonal", "param", "cross", "other"};
+			const PlanarDrawResult r = CheckPlanarDrawable(v, 15.0, lp);
+			out << std::format("- {} D449 LP: {} {} ms, threshold {}\n", tag, r.status, static_cast<int>(r.ms), lp_env);
+			if (r.status != "Optimal") {
+				flush();
+				continue;
+			}
+			const std::string lp_file = std::format("d449-lp-{}-{}.txt", name, lp_env);
+			std::ofstream lf(lp_file);
+			lf << std::setprecision(10);
+			size_t on_n = 0, offset = 0;
+			for (size_t t = 0; t < v.tracks.size(); t++) {
+				out << std::format("D449LPT {} {} t {} offset {}\n", name, v.structure.map.tracks[t].name, t, offset);
+				offset += v.tracks[t].pieces.size();
+				for (size_t i = 0; i < v.tracks[t].pieces.size(); i++) lf << r.lengths[t][i] << "\n";
+				for (const uint32_t m : v.tracks[t].flex) {
+					const bool on = r.lengths[t][m] >= std::atof(lp_env);
+					on_n += on ? 1 : 0;
+					out << std::format("D449LP {} {} t {} m {} len {} {}\n", name, v.structure.map.tracks[t].name, t, m, r.lengths[t][m], on ? "ON" : "off");
+				}
+			}
+			lf.close();
+			out << std::format("- {} D449 LP: inserts at or above the threshold {}, lock file {}\n", tag, on_n, lp_file);
+			setenv("PLANAR_STAGEA_LOCK_FILE", lp_file.c_str(), 1);
+			sa.curve_flex_above = std::atof(lp_env);
+		}
 		std::vector<double> start_all;
 		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
 			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
@@ -8234,7 +8266,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		Contracted jc;
 		jc.v = plain;
 		jc.points = final_points;
-		if (d449) {
+		if (d449 || lp_on) {
 			/* The final drawing's track length (sum of the piece extents, as the polish line's total) and box. */
 			int x_lo = INT_MAX, x_hi = INT_MIN, y_lo = INT_MAX, y_hi = INT_MIN;
 			long length = 0;
