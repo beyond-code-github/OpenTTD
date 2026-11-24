@@ -7772,7 +7772,8 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			std::set<std::pair<uint32_t, uint32_t>> on;
 			size_t n_change = 0, n_link = 0, n_none = 0, n_shared = 0, n_big = 0;
 			std::string none_list;
-			const auto place = [&](uint32_t line, uint32_t lo, uint32_t hi, bool at_end, int delta, const std::string &what) {
+			std::set<std::pair<uint32_t, uint32_t>> *placed_log = nullptr;
+			const auto place =[&](uint32_t line, uint32_t lo, uint32_t hi, bool at_end, int delta, const std::string &what) {
 				const PlanarShapeTrack &st = v.tracks[line];
 				const int want = delta > 0 ? 1 : -1;
 				std::vector<uint32_t> middles = st.flex;
@@ -7795,6 +7796,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 					return;
 				}
 				on.insert({line, pick});
+				if (placed_log != nullptr) placed_log->insert({line, pick});
 			};
 			for (uint32_t c = 0; c < dch.channels.size(); c++) {
 				const PlanarChannel &cc = dch.channels[c];
@@ -7853,8 +7855,45 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				const PlanarShapeTrack &st = v.tracks[link.to];
 				place(link.to, 0, st.event_piece.empty() ? static_cast<uint32_t>(st.pieces.size() - 1) : st.event_piece[0], false, link.step, "link");
 			}
+			/* P2b: v1's gap steps (fan: the in port's stretch of every lane of the channel, nearest the port; close-up: the out port's stretch, nearest the port), direction `toward` as the slot changes. */
+			const size_t slot_on = on.size();
+			bool gap_only = false;
+			std::set<std::pair<uint32_t, uint32_t>> gap_on;
+			placed_log = &gap_on;
+			std::string gwhy;
+			const std::vector<PlanarGapStep> gsteps = BuildPlanarGapSteps(topology, dch, dsites, gwhy);
+			out << std::format("- {} D449 gap steps: {} (why '{}')", tag, gsteps.size(), gwhy);
+			const size_t none_before = n_none;
+			for (const PlanarGapStep &gs : gsteps) {
+				out << std::format(" [{} {} toward {} neighbour {}]", gs.channel, gs.fan ? "fan" : "close-up", gs.toward, gs.neighbour);
+				for (const uint32_t line : dch.channels[gs.channel].lines) {
+					const PlanarShapeTrack &st = v.tracks[line];
+					const uint32_t last_piece = static_cast<uint32_t>(st.pieces.size() - 1);
+					if (gs.fan) {
+						place(line, 0, st.event_piece.empty() ? last_piece : st.event_piece[0], false, gs.toward, "fan");
+					} else {
+						place(line, st.event_piece.empty() ? 0 : st.event_piece.back(), last_piece, true, gs.toward, "close-up");
+					}
+				}
+			}
+			placed_log = nullptr;
+			out << std::format("; gap inserts on {}, no insert {}{}\n", gap_on.size(), n_none - none_before, none_list);
+			/* Candidate straight-channel steps: reported, not locked; the inserts of the candidate channel's lines are free (whole tracks, flex_free_tracks). */
+			const std::vector<PlanarCandidateStep> cands = PlanarCandidateSteps(topology, dch);
+			out << std::format("- {} D449 candidate steps: {}", tag, cands.size());
+			for (const PlanarCandidateStep &cs : cands) {
+				out << std::format(" [channel {} toward {}]", cs.channel, cs.toward);
+				for (const uint32_t line : dch.channels[cs.channel].lines) sa.flex_free_tracks.push_back(dm.tracks[line].name);
+			}
+			out << "\n";
+			if (std::getenv("PLANAR_D449_GAPONLY") != nullptr) {
+				/* Separation run: every insert free except the gap-step inserts, forced on. */
+				on = gap_on;
+				gap_only = true;
+			}
 			d449_lock.assign(v.tracks.size(), {});
 			for (size_t t = 0; t < v.tracks.size(); t++) d449_lock[t].assign(v.tracks[t].pieces.size(), 0.0);
+			out << std::format("- {} D449 on: slots {}, gap {}, total {}\n", tag, slot_on, gap_on.size(), on.size());
 			size_t flex_total = 0;
 			for (const PlanarShapeTrack &st : v.tracks) flex_total += st.flex.size();
 			out << std::format("- {} D449 map: changes {} links {} (|delta|>1: {}), inserts on {} of {}, shared {}, no insert {}{}, extra Line parts {}; slot order vs face side over {} adjacent pairs: later-right {}, later-left {}, undecided {}\n", tag, n_change, n_link, n_big, on.size(), flex_total, n_shared, n_none, none_list, extra_lines, pair_right + pair_left + pair_none, pair_right, pair_left, pair_none);
@@ -7863,7 +7902,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 				out << std::format("D449ON {} {} t {} m {} d {}\n", name, dm.tracks[t].name, t, m, v.tracks[t].pieces[m] > v.tracks[t].pieces[m - 1] ? 1 : -1);
 			}
 			sa.curve_flex_from = &d449_lock;
-			sa.curve_flex_free = false;
+			sa.curve_flex_free = gap_only;
 			flush();
 		}
 		/* The v1 rule set is on by default; each PLANAR_NO_<RULE> turns one off (the probe-defaults brief). */
