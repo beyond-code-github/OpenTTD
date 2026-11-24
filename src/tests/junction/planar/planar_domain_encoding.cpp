@@ -11,7 +11,9 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_spec.h"
+#include "../../../track_func.h"
 #include "../../../junction/planar/planar_domain.h"
 #include "../../../junction/planar/planar_domain_map.h"
 #include "../../../junction/planar/planar_draw.h"
@@ -3836,6 +3838,42 @@ TEST_CASE("planar domain: the drawn hub of BR1 holds its contract and renders fo
 	CHECK(why.empty());
 }
 
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology);
+
+TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
+	const PlanarRender render = RenderPlanarDrawnHub(hub);
+	INFO("render: " << render.why);
+	REQUIRE(render.why.empty());
+	CHECK(!render.network.prio_rows.empty());
+
+	JunctionLayout layout = render.layout;
+	std::string why;
+	SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &why);
+	INFO("signals: " << why);
+	REQUIRE(why.empty());
+
+	/* The layout holds the tile of every row's last piece (beside its merge) with the row's own track. */
+	for (const std::vector<JunctionPiece> &row : render.network.prio_rows) {
+		REQUIRE(!row.empty());
+		const JunctionPiece &end = row.back();
+		const bool drawn = std::ranges::any_of(layout.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == end.tile.x && jt.offset.y == end.tile.y && jt.tracks.Test(TrackdirToTrack(end.trackdir)); });
+		CHECK(drawn);
+	}
+	std::vector<RuleViolation> prio;
+	for (const RuleViolation &v : CheckJunctionRules(layout, spec, PlanarCheckerTopology(topology))) {
+		if (v.rule != JunctionRule::Prio && v.rule != JunctionRule::PrioReach) continue;
+		UNSCOPED_INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
+		prio.push_back(v);
+	}
+	CHECK(prio.empty());
+}
+
 TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", "[junction][planar][planardomain]")
 {
 	const BridgeFixture f;
@@ -3888,12 +3926,9 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 }
 
 /** T1's contracted variant of the curve-spacing run (stage A's lengths in `t1-final-curves-stagea.drawing.txt`) and the final drawing's points (`t1-final-curves.drawing.txt`), both from the slotsstep2 probe with PLANAR_STAGEA_SAVE and PLANAR_FINAL_SAVE. */
-TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain]")
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology)
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	std::string error, why;
-	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
-	REQUIRE(error.empty());
+	std::string why;
 	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
 	REQUIRE(!sr.variants.empty());
 	PlanarShapeVariant v;
@@ -3960,6 +3995,16 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 	const PlanarDrawnHub hub = PlanarDrawnHubOf(cv->v, points, notes, hub_why);
 	INFO("hub: " << hub_why);
 	REQUIRE(hub_why.empty());
+	return hub;
+}
+
+TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
 	INFO(HubTracksText(hub));
 	const std::vector<std::string> broken = CheckPlanarDrawnHub(hub);
 	INFO(JoinLines(broken));

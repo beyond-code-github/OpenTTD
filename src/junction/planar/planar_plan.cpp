@@ -445,6 +445,20 @@ PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
 			out.routes.push_back(std::move(track));
 		}
 	}
+	/* The prio rows are real tracks of the hub (D349): their domain-raster pieces go to the signal pass, which draws the joins and signals on them (D452). They join no route, layout, node or port tile. */
+	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		if (hub.tracks[t].kind != PlanarTrack::Kind::Row) continue;
+		if (std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t; })) {
+			out.why = fmt::format("prio row {} lies on a bridge", hub.tracks[t].name);
+			return out;
+		}
+		std::vector<JunctionPiece> row;
+		for (const PlanarDomainPiece &piece : rasters[t].pieces) {
+			const Trackdir trackdir = StartTrackdirOf(piece);
+			row.push_back({piece.tile, trackdir, static_cast<uint8_t>(IsDiagonalTrackdir(trackdir) ? 2 : 1), false});
+		}
+		out.network.prio_rows.push_back(std::move(row));
+	}
 	for (size_t n = 0; n < hub.nodes.size(); n++) {
 		if (!node_done[n]) {
 			out.why = fmt::format("node {} lies on no route path", n);
