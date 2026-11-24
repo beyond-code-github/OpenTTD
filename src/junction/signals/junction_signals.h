@@ -38,7 +38,7 @@ struct JunctionSignalRoute {
 /** The routes' switch structure, as the signal pass reads it (parallel to the track routes). */
 struct JunctionSignalNetwork {
 	std::vector<JunctionSignalRoute> routes;
-	std::vector<std::vector<JunctionPiece>> prio_rows; ///< Each prio row's pieces, upstream first, its last piece beside its merge tile (D349, D452).
+	std::vector<std::vector<JunctionPiece>> prio_rows; ///< Each prio row as drawn, upstream first: its join off the main line, the run beside it, its join on the merge tile (D349, D452, D454).
 };
 
 /** Why a signal stands where it does (DESIGN-G1 §12.2, §12.3). */

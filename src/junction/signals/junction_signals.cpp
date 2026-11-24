@@ -96,14 +96,12 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		return !signalled_at.contains({piece.tile.x, piece.tile.y, piece.trackdir}) && !signalled_at.contains({piece.tile.x, piece.tile.y, ReverseTrackdir(piece.trackdir)});
 	};
 
-	/* The row the caller gave for a merge: the one whose last piece is on the merge tile's side tile (D349, D452). */
-	const auto given_row = [&](TileIndexDiffC merge, DiagDirection side) -> const std::vector<JunctionPiece> * {
-		const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side);
-		const std::vector<JunctionPiece> *found = nullptr;
+	/* The row the caller gave for a merge: the one with a piece on the merge tile (D349, D452, D454). */
+	const auto given_row = [&](TileIndexDiffC merge) -> const std::vector<JunctionPiece> * {
 		for (const std::vector<JunctionPiece> &row : network.prio_rows) {
-			if (!row.empty() && row.back().tile.x == merge.x + diff.x && row.back().tile.y == merge.y + diff.y) found = &row;
+			if (std::ranges::any_of(row, [&](const JunctionPiece &piece) { return piece.tile.x == merge.x && piece.tile.y == merge.y; })) return &row;
 		}
-		return found;
+		return nullptr;
 	};
 
 	/** One event of a route: a switch (one index) or a bridge (first to last index). */
@@ -168,7 +166,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			if (prio != nullptr && span == prio->end()) continue;
 
 			/* A merge with a given row is placed by the search on that row. */
-			if (prio == nullptr && given_row(M, *side) != nullptr) {
+			if (prio == nullptr && given_row(M) != nullptr) {
 				deferred.emplace_back(r, j, *joiner, *joiner_k, *side);
 				continue;
 			}
@@ -385,8 +383,8 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		const auto at = [&](int m) -> const JunctionPiece * { return m < 0 || m > last_piece ? nullptr : &P[j - m]; };
 		const auto is_axis = [&](int m) { const JunctionPiece *piece = at(m); return piece != nullptr && !piece->on_bridge && IsDiagonalTrackdir(piece->trackdir); };
 		const auto side_of = [&](const JunctionPiece &piece) { return ChangeDiagDir(TrackdirToExitdir(piece.trackdir), turn); };
-		const std::vector<JunctionPiece> *const given = given_row(M, side);
-		/* The index in the given row of the piece beside step m: beside an axis piece the row piece on the side tile with the same track, beside a 45 degree piece the row piece on the same tile on the opposite half (D353). */
+		const std::vector<JunctionPiece> *const given = given_row(M);
+		/* The index in the given row of the piece beside step m: beside an axis piece the row piece on the side tile with the same track, beside a 45 degree piece the row piece on the same tile on the opposite half (D353). The row's end joins are half pieces with no such neighbour. */
 		const auto row_index = [&](int m) -> std::optional<size_t> {
 			if (given == nullptr || at(m) == nullptr || at(m)->on_bridge) return std::nullopt;
 			const JunctionPiece &piece = *at(m);
@@ -415,13 +413,25 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			const TileIndexDiffC from = TileIndexDiffCByDiagDir(in);
 			return TileIndexDiffC{static_cast<int16_t>(piece->tile.x + to.x - from.x), static_cast<int16_t>(piece->tile.y + to.y - from.y)};
 		};
+		/* With a given row, its upstream end: the main-line step beside the tile of the row's end that is not on the merge tile. */
+		int m_end = -1;
+		if (given != nullptr) {
+			const TileIndexDiffC far_tile = given->front().tile.x == M.x && given->front().tile.y == M.y ? given->back().tile : given->front().tile;
+			for (int m = 1; m <= last_piece && m_end < 0; m++) {
+				if (is_axis(m) && at(m)->tile.x == far_tile.x && at(m)->tile.y == far_tile.y) m_end = m;
+			}
+		}
 		const auto row_of = [&](int m) -> std::optional<TileIndexDiffC> {
 			const JunctionPiece *piece = at(m);
 			if (piece == nullptr) return std::nullopt;
 			if (given != nullptr) {
 				const std::optional<size_t> index = row_index(m);
-				if (!index.has_value()) return std::nullopt;
-				return (*given)[*index].tile;
+				if (index.has_value()) return (*given)[*index].tile;
+				if ((m == 0 || m == m_end) && is_axis(m)) {
+					const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side_of(*piece));
+					return TileIndexDiffC{static_cast<int16_t>(piece->tile.x + diff.x), static_cast<int16_t>(piece->tile.y + diff.y)}; // an end join's row half
+				}
+				return std::nullopt;
 			}
 			if (!is_axis(m)) return corner(m);
 			const TileIndexDiffC diff = TileIndexDiffCByDiagDir(side_of(*piece));
@@ -434,10 +444,20 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		};
 		/* An axis piece with a row tile of its own: not beside a bend. */
 		const auto plain = [&](int m) { return is_axis(m) && (given != nullptr || (!corner(m - 1).has_value() && !corner(m + 1).has_value())); }; // with a given row, any axis piece has its own row tile
+		/* The tracks the given row itself has on a tile: they are drawn already (a route may run on the row) and do not make the tile taken. */
+		const auto not_row = [&](TileIndexDiffC tile) {
+			TrackBits bits = tracks_at(tracks, tile);
+			if (given == nullptr) return bits;
+			for (const JunctionPiece &g : *given) {
+				if (g.tile.x == tile.x && g.tile.y == tile.y) bits.Reset(TrackdirToTrack(g.trackdir));
+			}
+			return bits;
+		};
 		const auto row_free = [&](int m) {
 			if (given != nullptr && !is_axis(m)) return true; // the given row passes it
 			const std::optional<TileIndexDiffC> tile = row_of(m);
-			return tile.has_value() && tracks_at(tracks, *tile) == TrackBits{} && (m == 0 || std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - m; }));
+			const bool end_join = given != nullptr && (m == 0 || m == m_end); // a switch of the hub itself
+			return tile.has_value() && not_row(*tile) == TrackBits{} && (end_join || m == 0 || std::ranges::none_of(switches, [&](const SwitchEvent &sw) { return sw.second == j - m; }));
 		};
 		const auto signals_on = [&](const JunctionPiece &piece) {
 			std::vector<const JunctionSignal *> found;
@@ -453,7 +473,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			const JunctionPiece &piece = *at(m);
 			const bool diagonal_pair = given != nullptr && !is_axis(m) && row_index(m).has_value(); // a signal pair or a touch point beside a 45 degree piece
 			if (!(plain(m) || diagonal_pair) || !row_free(m) || heads.contains({piece.tile.x, piece.tile.y})) return false;
-			if (m > 0 && tracks_at(tracks, piece.tile) != TrackBits{TrackdirToTrack(piece.trackdir)}) return false;
+			if (m > 0 && not_row(piece.tile) !=TrackBits{TrackdirToTrack(piece.trackdir)}) return false;
 			for (const JunctionSignal *signal : signals_on(piece)) {
 				if (join ? !is_fill(*signal) : signal->facing != piece.trackdir) return false;
 			}
@@ -467,6 +487,7 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		std::vector<int> pos; // The pieces of the elements in walk order.
 		uint leaves = 0;
 		int pairs = 0;
+		std::string first_leaf; // The first leaf's violation, for the why.
 		const auto try_leaf = [&]() {
 			leaves++;
 			JunctionLayout scratch = layout;
@@ -480,27 +501,27 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			}
 			std::erase_if(scratch.signals, [&](const JunctionSignal &signal) { return std::ranges::find(removed, std::tuple{static_cast<int>(signal.offset.x), static_cast<int>(signal.offset.y), signal.facing}) != removed.end(); });
 			if (given != nullptr) {
-				/* The given row from the last element's piece up to the merge tile's join, as solved (the merge-tile join holds its half piece alone). */
-				const size_t from = *row_index(pos.back()), to = *row_index(0);
-				for (size_t i = std::min(from, to); i < std::max(from, to); i++) drawn_here.emplace_back((*given)[i].tile, TrackBits{TrackdirToTrack((*given)[i].trackdir)});
+				/* The row is track as drawn: every piece, both end joins included (D454). */
+				for (const JunctionPiece &g : *given) drawn_here.emplace_back(g.tile, TrackBits{TrackdirToTrack(g.trackdir)});
 			}
 			for (int m = 0; m <= pos.back(); m++) {
 				const JunctionPiece &piece = *at(m);
+				const size_t e = std::ranges::find(pos, m) - pos.begin();
+				const bool join = e < pos.size() && e % 2 == 0;
 				if (given != nullptr && !is_axis(m)) {
 					/* A touch point beside a 45 degree piece: one axis piece across the shared tile, from the ML half's exit edge to the row half (a trailing crossover). */
-					const size_t e = std::ranges::find(pos, m) - pos.begin();
-					if (e < pos.size() && e % 2 == 0) drawn_here.emplace_back(piece.tile, TrackBits{AxisToTrack(DiagDirToAxis(TrackdirToExitdir(piece.trackdir)))});
+					if (join) drawn_here.emplace_back(piece.tile, TrackBits{AxisToTrack(DiagDirToAxis(TrackdirToExitdir(piece.trackdir)))});
 					continue;
 				}
+				if (given != nullptr && (m == 0 || m == m_end)) continue; // the end joins are the row's own pieces
 				const TileIndexDiffC row_tile = *row_of(m);
 				if (!is_axis(m)) {
 					drawn_here.emplace_back(row_tile, TrackBits{TrackdirToTrack(piece.trackdir)});
 					continue;
 				}
-				const size_t e = std::ranges::find(pos, m) - pos.begin();
 				const Track piece_axis = TrackdirToTrack(piece.trackdir);
 				const DiagDirection piece_exit = TrackdirToExitdir(piece.trackdir);
-				if (e < pos.size() && e % 2 == 0) {
+				if (join) {
 					drawn_here.emplace_back(piece.tile, TrackBits{JunctionCornerTrack(side_of(piece), piece_exit)});
 					const Track h2 = JunctionCornerTrack(ReverseDiagDir(side_of(piece)), ReverseDiagDir(piece_exit));
 					drawn_here.emplace_back(row_tile, (m == 0 || given != nullptr) ? TrackBits{h2} : TrackBits{piece_axis, h2});
@@ -524,10 +545,14 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			std::vector<RuleViolation> violations = CheckPrio(ctx);
 			for (RuleViolation &violation : CheckPrioReach(ctx)) violations.push_back(std::move(violation));
 			for (const RuleViolation &violation : violations) {
-				for (int m = 0; m <= std::max(coverage, pos.back()); m++) {
+				bool mine = given != nullptr && std::ranges::any_of(*given, [&](const JunctionPiece &g) { return g.tile.x == violation.tile.x && g.tile.y == violation.tile.y; });
+				for (int m = 0; m <= std::max(coverage, pos.back()) && !mine; m++) {
 					const std::optional<TileIndexDiffC> row_tile = row_of(m);
-					if ((violation.tile.x == at(m)->tile.x && violation.tile.y == at(m)->tile.y) || (row_tile.has_value() && violation.tile.x == row_tile->x && violation.tile.y == row_tile->y)) return false;
+					mine = (violation.tile.x == at(m)->tile.x && violation.tile.y == at(m)->tile.y) || (row_tile.has_value() && violation.tile.x == row_tile->x && violation.tile.y == row_tile->y);
 				}
+				if (!mine) continue;
+				if (given != nullptr && leaves == 1) first_leaf = fmt::format("{} at {},{}", violation.message, violation.tile.x, violation.tile.y);
+				return false;
 			}
 
 			/* Taken: the scratch becomes the layout. */
@@ -546,7 +571,10 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 		};
 		const std::function<bool(size_t)> search = [&](size_t i) {
 			if (i == static_cast<size_t>(2 * pairs + 1)) return try_leaf();
-			for (int m = pos.back() + 1; m + static_cast<int>(2 * pairs - i) <= last_piece && row_free(m); m++) {
+			/* With a given row the last element is the row's upstream join, already placed. */
+			const int first = given != nullptr && i == static_cast<size_t>(2 * pairs) ? m_end : pos.back() + 1;
+			const int bound = given != nullptr ? m_end : last_piece;
+			for (int m = first; m + static_cast<int>(2 * pairs - i) <= bound && row_free(m); m++) {
 				if (!candidate(m, i % 2 == 0)) continue;
 				pos.push_back(m);
 				if (search(i + 1)) return true;
@@ -556,19 +584,21 @@ std::vector<JunctionTrackSignal> SignalJunctionTrackRoutes(JunctionLayout &layou
 			return false;
 		};
 
-		if (given != nullptr && !row_index(0).has_value()) {
+		if (given != nullptr && m_end < 0) {
 			if (why != nullptr && why->empty()) *why = fmt::format("the given prio row does not reach its merge at {},{}", M.x, M.y);
 			continue;
 		}
 		bool placed = false;
 		if (plain(0) && row_free(0)) {
-			for (pairs = std::max(n_prio / 2 - 1, 0); pairs < std::max(n_prio, 1) && !placed && leaves < MAX_PRIO_LEAVES; pairs++) {
+			for (pairs = given != nullptr ? 1 : std::max(n_prio / 2 - 1, 0); pairs < std::max(n_prio, 1) && !placed && leaves < MAX_PRIO_LEAVES; pairs++) {
 				pos = {0};
 				placed = search(1);
 			}
 		}
 		if (placed) placed_merges.insert({M.x, M.y});
-		if (!placed && why != nullptr && why->empty()) *why = fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+		if (!placed && why != nullptr && why->empty()) {
+			*why = given != nullptr ? fmt::format("the given prio row at {},{} fails every leaf; first leaf: {}", M.x, M.y, first_leaf.empty() ? "no violation on its tiles (no leaf drawn)" : first_leaf) : fmt::format("the prio element at {},{} does not fit", M.x, M.y);
+		}
 	}
 	return tokens;
 }
