@@ -7471,7 +7471,12 @@ TEST_CASE("contraction diag", "[.][contractiondiag]")
 }
 
 /** Stage B on a contracted variant, then the polish, the judge and the domain (the slots probe and `[stagebmiss]` share it): the lines go to `out` (`flush` empties it), the lazy table to `md`. Returns false when stage B did not run to a drawing (listing Infeasible, or not converged); else `final_points` is the polished drawing (the lazy loop's when the polish is not Optimal). */
-static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::ostream &md, std::ostringstream &out, const std::function<void()> &flush, std::vector<Points> &final_points)
+struct StageBRules {
+	bool curves_bays; ///< Curves and bays in stage B and the polish.
+	bool coverage; ///< The D384 coverage rows in stage B (and the listing solve).
+};
+
+static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::ostream &md, std::ostringstream &out, const std::function<void()> &flush, std::vector<Points> &final_points, const StageBRules &rules)
 {
 	PlanarShapeVariant plain = cv.v;
 	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
@@ -7483,9 +7488,9 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 	const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
 	PlanarDrawOptions sb, listing;
 	StageBOptions(fb, cv, ref_port_zero, ref_along, sb, listing);
-	const bool b_curves = std::getenv("PLANAR_STAGEB_CURVES") != nullptr;
+	const bool b_curves = rules.curves_bays;
 	if (b_curves) sb.curves = sb.bays = true;
-	if (std::getenv("PLANAR_COVERAGE") != nullptr) sb.coverage = listing.coverage = true;
+	if (rules.coverage) sb.coverage = listing.coverage = true;
 	const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
 	out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
 	flush();
@@ -7545,6 +7550,13 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 (step 2b)", "[.][slotsstep2]")
 {
 	const char *hub_env = std::getenv("PLANAR_SLOTS_HUB");
+	{
+		std::string on;
+		for (const char *rule : {"CURVES", "COVERAGE", "GRID_COND", "STAGEA_NODEGAPS", "FLANK", "NODE_FLANK", "NODE_CUSP"}) {
+			if (std::getenv((std::string("PLANAR_NO_") + rule).c_str()) == nullptr) on += std::string(on.empty() ? "" : " ") + rule;
+		}
+		std::cout << "rules on: " << on << "\n" << std::flush;
+	}
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::ofstream md(std::getenv("PLANAR_STEP2B_OUT") != nullptr ? std::getenv("PLANAR_STEP2B_OUT") : "slots-step2b.md", std::ios::app);
 	for (const std::string name : {"T1", "T2"}) {
@@ -7585,19 +7597,20 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		sa.node_gaps = false;
 		sa.keep_apart_out = true;
 		sa.only_pairs_on = true;
-		if (std::getenv("PLANAR_GRID_COND") != nullptr) {
+		/* The v1 rule set is on by default; each PLANAR_NO_<RULE> turns one off (the probe-defaults brief). */
+		if (std::getenv("PLANAR_NO_GRID_COND") == nullptr) {
 			sa.grid_conditional = true;
 			sa.program_out = true; // to count the `grid run` rows
 		}
-		if (std::getenv("PLANAR_STAGEA_NODEGAPS") != nullptr) {
+		if (std::getenv("PLANAR_NO_STAGEA_NODEGAPS") == nullptr) {
 			sa.node_gaps = true;
 			sa.node_gap_from = nullptr;
 		}
-		if (std::getenv("PLANAR_COVERAGE") != nullptr) {
+		if (std::getenv("PLANAR_NO_COVERAGE") == nullptr) {
 			sa.coverage = true;
 			sa.program_out = true; // to count the `coverage` rows
 		}
-		sa.flank_turn = std::getenv("PLANAR_FLANK") != nullptr;
+		sa.flank_turn = std::getenv("PLANAR_NO_FLANK") == nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
 		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
 		/* Diagnosis knobs (D448 follow-up): PLANAR_STAGEA_ELASTIC: the LP with slack on the flank rows only (D409); PLANAR_STAGEA_LP: every variable continuous, grid off, rows hard. */
@@ -7611,8 +7624,8 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		if (std::getenv("PLANAR_STAGEA_NOGRID") != nullptr) sa.grid = false;
 		if (std::getenv("PLANAR_STAGEA_ALLPAIRS") != nullptr) sa.only_pairs_on = false; // every keep-apart pair gets its rows (for an offline export)
 		if (const char *cm = std::getenv("PLANAR_STAGEA_COORD"); cm != nullptr) sa.coord_max = std::atof(cm);
-		if (std::getenv("PLANAR_NODE_FLANK") != nullptr) sa.node_flank = true;
-		if (std::getenv("PLANAR_NODE_CUSP") != nullptr) sa.node_cusp = true;
+		sa.node_flank = std::getenv("PLANAR_NO_NODE_FLANK") == nullptr;
+		sa.node_cusp = std::getenv("PLANAR_NO_NODE_CUSP") == nullptr;
 		std::vector<double> start_all;
 		if (const char *file = std::getenv("PLANAR_STAGEA_START_ALL"); file != nullptr) {
 			/* A complete MIP start from an offline solve (tools/junction/planar_cpsat.py --values=). */
@@ -7917,7 +7930,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 
 		/* Stage B on the contracted variant, polish, judge and domain. */
 		std::vector<Points> final_points;
-		if (!StageBToDomain(*cv, tag, md, out, flush, final_points)) continue;
+		if (!StageBToDomain(*cv, tag, md, out, flush, final_points, StageBRules{std::getenv("PLANAR_NO_CURVES") == nullptr, std::getenv("PLANAR_NO_COVERAGE") == nullptr})) continue;
 		Contracted jc;
 		jc.v = plain;
 		jc.points = final_points;
@@ -8015,7 +8028,7 @@ TEST_CASE("planar slots: stage B from the pinned T1 stage A drawing: lazy rounds
 	std::vector<Points> final_points;
 	for (int run = 0; run < 2; run++) {
 		std::ostringstream out, md;
-		REQUIRE(StageBToDomain(*cv, "STAGEBMISS T1", md, out, [] {}, final_points));
+		REQUIRE(StageBToDomain(*cv, "STAGEBMISS T1", md, out, [] {}, final_points, StageBRules{false, false}));
 		lines[run] = std::regex_replace(out.str(), std::regex(R"(([0-9]+) ms|ms ([0-9]+))"), "ms");
 	}
 	std::cout << lines[0];
@@ -8215,7 +8228,7 @@ TEST_CASE("planar slots: stage B and the polish from the pinned T1 stage A drawi
 
 	std::ostringstream out, md;
 	std::vector<Points> final_points;
-	REQUIRE(StageBToDomain(*cv, "PIN T1", md, out, [] {}, final_points));
+	REQUIRE(StageBToDomain(*cv, "PIN T1", md, out, [] {}, final_points, StageBRules{false, false}));
 	INFO(out.str());
 	CHECK(out.str().find("polish: Optimal") != std::string::npos);
 	CHECK(out.str().find("judge accept") != std::string::npos);
@@ -8272,7 +8285,7 @@ TEST_CASE("planar slots: stage B and the polish from the pinned T2 stage A drawi
 
 	std::ostringstream out, md;
 	std::vector<Points> final_points;
-	const bool ran = StageBToDomain(*cv, "PIN T2", md, out, [] {}, final_points);
+	const bool ran = StageBToDomain(*cv, "PIN T2", md, out, [] {}, final_points, StageBRules{false, false});
 	INFO(out.str());
 	REQUIRE(ran);
 	CHECK(out.str().find("polish: Optimal") != std::string::npos);
