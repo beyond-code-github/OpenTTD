@@ -3919,6 +3919,29 @@ TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with c
 	CHECK(prio.empty());
 }
 
+TEST_CASE("planar domain: the drawn hub carries no route path on a prio row (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
+	CHECK(CheckPlanarDrawnHub(hub).empty());
+	uint32_t row = 0;
+	while (row < hub.tracks.size() && hub.tracks[row].kind != PlanarTrack::Kind::Row) row++;
+	REQUIRE(row < hub.tracks.size());
+	for (const PlanarDrawnHub::Route &r : hub.routes) {
+		for (const std::vector<uint32_t> &path : r.paths) CHECK(std::ranges::find(path, row) == path.end());
+	}
+	/* A path on the row, by hand: the oracle names it once. */
+	hub.routes.front().paths.push_back({row});
+	const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
+	INFO(JoinLines(lines));
+	REQUIRE(lines.size() == 1);
+	CHECK(lines[0].find("route " + hub.routes.front().name) != std::string::npos);
+	CHECK(lines[0].find(hub.tracks[row].name) != std::string::npos);
+}
+
 TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", "[junction][planar][planardomain]")
 {
 	const BridgeFixture f;
@@ -4058,9 +4081,10 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 	INFO("render: " << render.why);
 	REQUIRE(render.why.empty());
 
-	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator. */
+	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator; a prio row is no route, so the signal pass draws it, not the render (D452). */
 	std::map<std::pair<int, int>, unsigned> expected;
 	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		if (hub.tracks[t].kind == PlanarTrack::Kind::Row) continue;
 		const std::vector<PlanarDomainPiece> pieces = RasterPlanarDomainTrack(hub.tracks[t].points).pieces;
 		for (uint32_t i = 0; i < pieces.size(); i++) {
 			const bool deck = std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t && i >= s.first && i <= s.last; });

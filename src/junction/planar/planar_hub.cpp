@@ -84,7 +84,15 @@ PlanarDrawnHub PlanarDrawnHubOf(const PlanarShapeVariant &v, const std::vector<s
 	}
 	for (const PlanarPort &p : map.expanded.ports) hub.ports.push_back({p.side, p.in, p.lines});
 	for (const PlanarDomainStructure &s : in.structures) hub.structures.push_back({s.separator, s.first, s.last, s.ends, s.limit, s.tunnel, s.crossers});
-	for (const PlanarRoute &r : map.expanded.routes) hub.routes.push_back({r.name, r.prio, r.paths});
+	/* Rows carry no route (D452, section 4.1): a path that runs on a track of kind Row is dropped. */
+	for (const PlanarRoute &r : map.expanded.routes) {
+		PlanarDrawnHub::Route route{r.name, r.prio, {}};
+		for (const std::vector<uint32_t> &path : r.paths) {
+			const bool on_row = std::ranges::any_of(path, [&](uint32_t t) { return t < hub.tracks.size() && hub.tracks[t].kind == PlanarTrack::Kind::Row; });
+			if (!on_row) route.paths.push_back(path);
+		}
+		hub.routes.push_back(std::move(route));
+	}
 
 	/* Whole tiles: shift every point by one even vector so the least tile is (0, 0). */
 	std::vector<std::vector<std::array<int, 2>>> all;
@@ -149,6 +157,8 @@ std::vector<std::string> CheckPlanarDrawnHub(const PlanarDrawnHub &hub)
 	for (const PlanarDrawnHub::Route &r : hub.routes) {
 		for (size_t p = 0; p < r.paths.size(); p++) {
 			const std::vector<uint32_t> &path = r.paths[p];
+			const auto on_row = std::ranges::find_if(path, [&](uint32_t t) { return t < hub.tracks.size() && hub.tracks[t].kind == PlanarTrack::Kind::Row; });
+			if (on_row != path.end()) lines.push_back(fmt::format("route {} path {} runs on prio row {}", r.name, p, name(*on_row)));
 			for (size_t k = 0; k + 1 < path.size(); k++) {
 				const bool meet = std::ranges::any_of(hub.nodes, [&](const PlanarDrawnHub::Node &n) {
 					return std::ranges::find(n.in, path[k]) != n.in.end() && std::ranges::find(n.out, path[k + 1]) != n.out.end();
