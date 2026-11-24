@@ -7101,6 +7101,74 @@ TEST_CASE("contraction diag", "[.][contractiondiag]")
 	}
 }
 
+/** Stage B on a contracted variant, then the polish, the judge and the domain (the slots probe and `[stagebmiss]` share it): the lines go to `out` (`flush` empties it), the lazy table to `md`. Returns false when stage B did not run to a drawing (listing Infeasible, or not converged); else `final_points` is the polished drawing (the lazy loop's when the polish is not Optimal). */
+static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::ostream &md, std::ostringstream &out, const std::function<void()> &flush, std::vector<Points> &final_points)
+{
+	PlanarShapeVariant plain = cv.v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	Contracted plain_cv;
+	plain_cv.v = plain;
+	plain_cv.points = cv.points;
+	X1Fixture fb(plain);
+	const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv.points);
+	const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
+	PlanarDrawOptions sb, listing;
+	StageBOptions(fb, cv, ref_port_zero, ref_along, sb, listing);
+	const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
+	out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
+	flush();
+	if (lr.status == "Infeasible") {
+		LazyConflict(plain, listing, tag, "B (no keep-apart rows)", md);
+		return false;
+	}
+	md << std::format("\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n") << std::flush;
+	const LazyRun b = LazyLoop(plain, sb, {}, tag, "B", md, false, true);
+	out << std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
+	if (!b.converged) {
+		flush();
+		return false;
+	}
+	int biggest_b = 0;
+	for (const auto &track : b.last.points) {
+		for (const auto &p : track) biggest_b = std::max({biggest_b, std::abs(p[0]), std::abs(p[1])});
+	}
+	PlanarDrawOptions sp = sb;
+	sp.tidy = true;
+	sp.keep_apart_out = true;
+	sp.only_pairs_on = true;
+	sp.only_pairs = b.list;
+	sp.coord_max = std::max(64, (2 * biggest_b + 15) / 16 * 16);
+	sp.start_points = &b.last.points;
+	const PlanarDrawResult pr = CheckPlanarDrawable(plain, 3.0, sp);
+	const auto total = [](const std::vector<std::vector<double>> &l) {
+		double sum = 0;
+		for (const auto &t : l) {
+			for (const double x : t) sum += x;
+		}
+		return sum;
+	};
+	out << std::format("- {} polish: {} {} ms length before {} after {}\n", tag, pr.status, static_cast<int>(pr.ms), total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
+	Contracted jc;
+	jc.v = plain;
+	jc.points = pr.status == "Optimal" ? pr.points : b.last.points;
+	const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, true);
+	std::string verdict = std::format("judge {}", jv.accept ? "accept" : "refuse");
+	for (const std::string &rule : jv.rules) verdict += " [" + rule + "]";
+	const RowsVerdict jn = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, false);
+	verdict += std::format(" (without interface rows: judge {}", jn.accept ? "accept" : "refuse");
+	for (const std::string &rule : jn.rules) verdict += " [" + rule + "]";
+	verdict += ")";
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(cv.v, jc.points, notes));
+	std::set<std::string> breaks;
+	for (const PlanarDomainBreak &br : d.breaks) breaks.insert(br.rule);
+	verdict += std::format("; domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
+	for (const std::string &rule : breaks) verdict += " [" + rule + "]";
+	out << "- " << tag << " " << verdict << "\n";
+	final_points = jc.points;
+	return true;
+}
+
 /** Slots step 2b (measurement): stage B from the suite's own contraction (ContractedVariant) of stage A's drawing, on T1 and T2. */
 TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 (step 2b)", "[.][slotsstep2]")
 {
@@ -7467,62 +7535,12 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		for (const std::string &line : lines) out << "  - " << line << "\n";
 		flush();
 
-		/* Stage B on the contracted variant. */
-		const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
-		const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
-		PlanarDrawOptions sb, listing;
-		StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
-		const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
-		out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
-		flush();
-		if (lr.status == "Infeasible") {
-			LazyConflict(plain, listing, tag, "B (no keep-apart rows)", md);
-			continue;
-		}
-		md << std::format("\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n") << std::flush;
-		const LazyRun b = LazyLoop(plain, sb, {}, tag, "B", md, false, true);
-		out << std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
-		if (!b.converged) {
-			flush();
-			continue;
-		}
-		int biggest_b = 0;
-		for (const auto &track : b.last.points) {
-			for (const auto &p : track) biggest_b = std::max({biggest_b, std::abs(p[0]), std::abs(p[1])});
-		}
-		PlanarDrawOptions sp = sb;
-		sp.tidy = true;
-		sp.keep_apart_out = true;
-		sp.only_pairs_on = true;
-		sp.only_pairs = b.list;
-		sp.coord_max = std::max(64, (2 * biggest_b + 15) / 16 * 16);
-		sp.start_points = &b.last.points;
-		const PlanarDrawResult pr = CheckPlanarDrawable(plain, 3.0, sp);
-		const auto total = [](const std::vector<std::vector<double>> &l) {
-			double sum = 0;
-			for (const auto &t : l) {
-				for (const double x : t) sum += x;
-			}
-			return sum;
-		};
-		out << std::format("- {} polish: {} {} ms length before {} after {}\n", tag, pr.status, static_cast<int>(pr.ms), total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
+		/* Stage B on the contracted variant, polish, judge and domain. */
+		std::vector<Points> final_points;
+		if (!StageBToDomain(*cv, tag, md, out, flush, final_points)) continue;
 		Contracted jc;
 		jc.v = plain;
-		jc.points = pr.status == "Optimal" ? pr.points : b.last.points;
-		const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, true);
-		std::string verdict = std::format("judge {}", jv.accept ? "accept" : "refuse");
-		for (const std::string &rule : jv.rules) verdict += " [" + rule + "]";
-		const RowsVerdict jn = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, false);
-		verdict += std::format(" (without interface rows: judge {}", jn.accept ? "accept" : "refuse");
-		for (const std::string &rule : jn.rules) verdict += " [" + rule + "]";
-		verdict += ")";
-		std::vector<std::string> notes;
-		const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(cv->v, jc.points, notes));
-		std::set<std::string> breaks;
-		for (const PlanarDomainBreak &br : d.breaks) breaks.insert(br.rule);
-		verdict += std::format("; domain {} notes {} breaks {}", d.legal ? "accept" : "refuse", notes.size(), d.breaks.size());
-		for (const std::string &rule : breaks) verdict += " [" + rule + "]";
-		out << "- " << tag << " " << verdict << "\n";
+		jc.points = final_points;
 		if (const char *rig_out = std::getenv("PLANAR_RIG_OUT"); rig_out != nullptr) {
 			/* The drawn hub of the final drawing, rendered for the back end (D452) and written for the rig. */
 			std::string hub_why;
@@ -7552,6 +7570,208 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		flush();
 	}
+}
+
+TEST_CASE("planar slots: stage B from the pinned T1 stage A drawing: lazy rounds, polish, judge, domain", "[.][stagebmiss]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	std::map<std::string, std::vector<int>> heads;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-stagea-rules.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+
+	/* Twice, to show the lines are deterministic (the times are masked). */
+	std::string lines[2];
+	std::vector<Points> final_points;
+	for (int run = 0; run < 2; run++) {
+		std::ostringstream out, md;
+		REQUIRE(StageBToDomain(*cv, "STAGEBMISS T1", md, out, [] {}, final_points));
+		lines[run] = std::regex_replace(out.str(), std::regex(R"(([0-9]+) ms|ms ([0-9]+))"), "ms");
+	}
+	std::cout << lines[0];
+	CHECK(lines[0] == lines[1]);
+
+	/* The diagnosis: the judge's refusal pair by pair, the domain's breaks, and what the lazy loop saw. */
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	Contracted plain_cv;
+	plain_cv.v = plain;
+	plain_cv.points = cv->points;
+	X1Fixture fb(plain);
+	const std::vector<std::vector<double>> ref_port_zero = PortZeroFrom(cv->points);
+	const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
+	PlanarDrawOptions sb, listing;
+	StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
+	std::ostringstream lazy_md;
+	const LazyRun b = LazyLoop(plain, sb, {}, "STAGEBMISS T1", "B", lazy_md, false, true);
+	std::cout << std::format("lazy: converged {} rounds {} pairs with rows {} of {}\n", b.converged, b.rounds, b.list.size(), b.all_pairs);
+	Contracted jc;
+	jc.v = plain;
+	jc.points = final_points;
+	const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, true);
+	const auto name_of = [&](uint32_t t) { return t < fb.n ? fb.Name(t) : std::string("box"); };
+	for (const PlanarKeepApartPair &pair : g_last_readouts.keep.keep_apart) {
+		if (!pair.skipped.empty() || pair.candidates.empty() || PlanarKeepApartHolds(pair, final_points)) continue;
+		std::cout << std::format("judge keep-apart FAIL: {} walls {}/{} pieces {}/{} kept '{}' in lazy list {}\n", pair.tag, name_of(pair.tracks[0]), name_of(pair.tracks[1]), pair.pieces[0], pair.pieces[1], pair.kept, std::ranges::find(b.list, pair.tag) != b.list.end());
+		for (const PlanarKeepApartPair &lp : b.pairs) {
+			if (lp.tag != pair.tag) continue;
+			std::cout << std::format("  lazy read-out of the same tag: skipped '{}' kept '{}' candidates {} holds on the lazy loop's points {}\n", lp.skipped, lp.kept, lp.candidates.size(), lp.candidates.empty() ? std::string("-") : std::format("{}", PlanarKeepApartHolds(lp, b.last.points)));
+		}
+		for (size_t c = 0; c < pair.candidates.size(); c++) {
+			const auto &cand = pair.candidates[c];
+			std::cout << std::format("  candidate {} s ({},{}) spacing {} margin {} rows:", c, cand.s[0], cand.s[1], cand.spacing, CandidateMargin(cand, final_points));
+			for (const auto &r : cand.rows) {
+				const auto p = PlanarKeepApartEnd(r, false, final_points), q = PlanarKeepApartEnd(r, true, final_points);
+				std::cout << std::format(" [p {}#{} ({},{}) q {}#{} ({},{})]", name_of(r.p[0]), r.p[1], p[0], p[1], name_of(r.q[0]), r.q[1], q[0], q[1]);
+			}
+			std::cout << "\n";
+		}
+	}
+	std::cout << std::format("judge {} rules:", jv.accept ? "accept" : "refuse");
+	for (const std::string &rule : jv.rules) std::cout << " [" << rule << "]";
+	std::cout << "\n";
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(cv->v, final_points, notes));
+	for (const PlanarDomainBreak &br : d.breaks) {
+		std::string names;
+		for (const uint32_t t : br.tracks) names += std::format(" {}#{}", name_of(t), t);
+		std::cout << std::format("domain break [{}] tracks{} tile ({},{}) why: {}\n", br.rule, names, br.tile.x, br.tile.y, br.why);
+	}
+	if (const char *save = std::getenv("PLANAR_STAGEB_SAVE"); save != nullptr) {
+		std::ofstream sf(save);
+		sf << "# T1 stage B polished drawing of t1-stagea-rules (contracted variant), one line per track: track NAME x0 y0 x1 y1 ... (points, not lengths)\n";
+		for (uint32_t t = 0; t < fb.n; t++) {
+			sf << "track " << fb.Name(t);
+			for (const auto &p : final_points[t]) sf << " " << p[0] << " " << p[1];
+			sf << "\n";
+		}
+	}
+}
+
+TEST_CASE("planar slots: T1's stage B drawing from the pinned stage A is accepted by the judge and the domain", "[junction][contraction][!shouldfail]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	std::map<std::string, std::vector<int>> heads;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-stagea-rules.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	X1Fixture fb(plain);
+
+	/* The stage B drawing: `track NAME x0 y0 x1 y1 ...` per line, `#` lines are comments. */
+	Contracted jc;
+	jc.v = plain;
+	jc.points.assign(fb.n, {});
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-stageb-rules.drawing.txt");
+		REQUIRE(in.good());
+		std::string line;
+		while (std::getline(in, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ls(line);
+			std::string word, track_name;
+			ls >> word >> track_name;
+			REQUIRE(word == "track");
+			uint32_t t = 0;
+			while (t < fb.n && fb.Name(t) != track_name) t++;
+			REQUIRE(t < fb.n);
+			for (int x, y; ls >> x >> y;) jc.points[t].push_back({x, y});
+		}
+	}
+	for (uint32_t t = 0; t < fb.n; t++) REQUIRE(jc.points[t].size() == plain.tracks[t].pieces.size() + 1);
+
+	const RowsVerdict jv = DrawingProgramJudge(DEFAULT_RULES)(fb, jc, true);
+	std::string rules;
+	for (const std::string &rule : jv.rules) rules += " [" + rule + "]";
+	INFO("judge refuses:" << rules);
+	CHECK(jv.accept);
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(cv->v, jc.points, notes));
+	std::string breaks;
+	for (const PlanarDomainBreak &br : d.breaks) breaks += " [" + br.rule + " " + br.why + "]";
+	INFO("domain breaks:" << breaks);
+	CHECK(d.legal);
 }
 
 TEST_CASE("planar slots: S-bends of legal T1 and T2 drawings by role (recon)", "[.][recont2sbends]")
