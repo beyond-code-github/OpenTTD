@@ -24,3 +24,11 @@ Behind env `PLANAR_D449_LP=<threshold>` in `[slotsstep2]` (stage A, the probe's 
 
 ## 5. Report
 References read; commits; the per-hub, per-threshold table; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
+
+## Run 2: P3b, the LP as a filter (2026-11-25, after P3: the LP's rounded set overlaps CP-SAT's 6/8, 21/25, 34/35 but adds 4/12/19 extras and misses 0-4; T1 draws end to end, T2/T3 locked stage A Infeasible)
+- Two variants of the P3 knob (start from wt-c2 HEAD 153b75d601), each one run per hub (T1, T2, T3), threshold 1e-6 only:
+  - **P3b-a `PLANAR_D449_LP_MODE=zero`:** inserts whose LP length is below the threshold are held at 0; every other insert is FREE (lower bound 0, as with no lock), not forced on.
+  - **P3b-b `PLANAR_D449_LP_MODE=on`:** inserts at or above the threshold are forced on (least length); every other insert is FREE (not held at 0).
+  - (P3's mode, both sides fixed, stays the default `PLANAR_D449_LP_MODE=both`.)
+- Freeing an insert must use the existing lock machinery (`curve_flex_free` / `flex_free_tracks` / the lock reference) only if it can free single inserts; if it can free only whole tracks, add the smallest per-insert free path in the probe's glue (file-local, test-side) or STOP if it needs planar_draw.cpp: say which.
+- Report per hub and mode: stage A status and time (HiGHS 15 s, `JUNCTION_MILP_INCUMBENT=1`), and when it draws: stage B, polish (track, box), judge, domain; inserts used in the final drawing vs CP-SAT's set. Append to p3.md (section "P3b"). Commits: `Add: Junction: D449 P3b, the LP as a filter (PLANAR_D449_LP_MODE)`, `Doc: Junction: D449 P3b numbers`.
