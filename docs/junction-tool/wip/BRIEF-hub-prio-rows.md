@@ -38,3 +38,14 @@ Budget: 90 minutes. Probe runs: one T1 at the end (15 s stage A).
 
 ## 8. Report
 References read; commits; red texts; gate and identity results (counts, any moved number); the T1 `rig:` line; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
+
+## Run 2 (2026-11-25, after run 1's stop; run 1's work is the WIP commit on wt-e1; start from it, no history rewrite)
+- **Ruling D454 (engineer): the row as drawn.** `prio_rows` carries the hub row's FULL piece list (its upstream join off the main line, the beside run, its join on the merge tile). The signal pass:
+  1. matches a row to a merge by the row having a piece on that merge's tile (not "last piece beside the merge tile");
+  2. draws the row's pieces as given (they are track, not a choice), including both end joins;
+  3. searches only the signal elements along it: signal pairs (row signal facing against the row's trackdir, main-line signal) and extra touch points (joins) between the row's two end joins, fewest first, at most 20000 leaves, as today's search orders them; the row's end joins count as elements already placed;
+  4. judges every leaf with `CheckPrio` and `CheckPrioReach` (no skip). If every leaf fails, report the first leaf's `CheckPrio`/`CheckPrioReach` violations in the why (one line), so the stop names the rule.
+- `row_index` (the row piece beside a main-line piece) must handle the row's half pieces at its ends: beside a main-line piece, the row piece on the side tile (axis main line) or the same tile's opposite half (diagonal, D353); end-join pieces have no beside main-line piece and are skipped.
+- Stop conditions added: the row's beside run is shorter or longer than the coverage the checker demands (D384: exact length) and `CheckPrio` refuses for that reason: STOP and report the row length vs coverage; do not trim or extend the row.
+- Inner tests: one hand case with a full given row (upstream join, beside run on an axis main line, merge-tile join) that the pass signals and the checker accepts; one beside a diagonal main line (D353). Red first.
+- Everything else (gates incl. wide gate + identity, docs, probe, commits) as parts 4-8. Note: the X2 exactness failure seen in run 1's gate is fixed on feature (7219cb3847, merged into this head): it must pass now.
