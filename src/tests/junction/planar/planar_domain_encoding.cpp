@@ -3883,7 +3883,7 @@ TEST_CASE("planar domain: the drawn hub of BR1 holds its contract and renders fo
 	CHECK(why.empty());
 }
 
-static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology);
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology, const std::string &stem = "t1-final-curves");
 
 TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with curves)", "[junction][planar][planardomain]")
 {
@@ -3891,7 +3891,8 @@ TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with c
 	std::string error;
 	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
 	REQUIRE(error.empty());
-	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
+	/* The coverage-sized drawings: each row is exactly its coverage long (D384). */
+	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology, "t1-final-coverage");
 	const PlanarRender render = RenderPlanarDrawnHub(hub);
 	INFO("render: " << render.why);
 	REQUIRE(render.why.empty());
@@ -3899,7 +3900,7 @@ TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with c
 
 	JunctionLayout layout = render.layout;
 	std::string why;
-	SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &why);
+	const std::vector<JunctionTrackSignal> tokens = SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &why);
 	INFO("signals: " << why);
 	REQUIRE(why.empty());
 
@@ -3910,12 +3911,37 @@ TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with c
 		const bool drawn = std::ranges::any_of(layout.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == end.tile.x && jt.offset.y == end.tile.y && jt.tracks.Test(TrackdirToTrack(end.trackdir)); });
 		CHECK(drawn);
 	}
-	std::vector<RuleViolation> prio;
-	for (const RuleViolation &v : CheckJunctionRules(layout, spec, PlanarCheckerTopology(topology))) {
-		if (v.rule != JunctionRule::Prio && v.rule != JunctionRule::PrioReach) continue;
-		UNSCOPED_INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
-		prio.push_back(v);
+	/* Every signal on a row tile came from the prio placement (a Reason::Prio token); the ordinary phases never signal a row (D452, D455). */
+	for (const std::vector<JunctionPiece> &row : render.network.prio_rows) {
+		for (const JunctionPiece &piece : row) {
+			for (const JunctionSignal &signal : layout.signals) {
+				if (signal.offset.x != piece.tile.x || signal.offset.y != piece.tile.y) continue;
+				const bool prio_token = std::ranges::any_of(tokens, [&](const JunctionTrackSignal &token) {
+					return token.reason == JunctionSignalReason::Prio && token.tile.x == signal.offset.x && token.tile.y == signal.offset.y && token.facing == signal.facing;
+				});
+				CHECK(prio_token);
+			}
+		}
 	}
+
+	/* The prio rules on the signalled layout, judged on the routes' own lane paths (the pass's context): the checker's boundary port search cannot find the hub's ports, which start on half pieces. */
+	JunctionTopology checker;
+	std::vector<JunctionPath> paths;
+	for (size_t r = 0; r < render.routes.size(); r++) {
+		const uint16_t slot = static_cast<uint16_t>(render.network.routes[r].group);
+		JunctionPath path;
+		path.from = JunctionPortRole::EIn;
+		path.to = JunctionPortRole::EOut;
+		path.pieces = render.routes[r].pieces;
+		path.from_slot = slot;
+		path.to_slot = slot;
+		paths.push_back(std::move(path));
+		if (std::ranges::none_of(checker.lane_paths, [&](const JunctionLanePath &lane) { return lane.from == slot; })) checker.lane_paths.push_back({slot, slot, 0, render.network.routes[r].main});
+	}
+	const JunctionCheckContext ctx{layout, spec, &checker, {}, {}, {}, std::move(paths), {}};
+	std::vector<RuleViolation> prio = CheckPrio(ctx);
+	for (RuleViolation &v : CheckPrioReach(ctx)) prio.push_back(std::move(v));
+	for (const RuleViolation &v : prio) UNSCOPED_INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
 	CHECK(prio.empty());
 }
 
@@ -3994,7 +4020,7 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 }
 
 /** T1's contracted variant of the curve-spacing run (stage A's lengths in `t1-final-curves-stagea.drawing.txt`) and the final drawing's points (`t1-final-curves.drawing.txt`), both from the slotsstep2 probe with PLANAR_STAGEA_SAVE and PLANAR_FINAL_SAVE. */
-static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology)
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology, const std::string &stem)
 {
 	std::string why;
 	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
@@ -4017,7 +4043,7 @@ static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTop
 	X1Fixture fa(v);
 	Geometry g;
 	{
-		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves-stagea.drawing.txt");
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + stem + "-stagea.drawing.txt");
 		REQUIRE(in.good());
 		std::string word, track_name;
 		while (in >> word) {
@@ -4043,7 +4069,7 @@ static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTop
 
 	std::vector<std::vector<std::array<int, 2>>> points(fb.n);
 	{
-		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves.drawing.txt");
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + stem + ".drawing.txt");
 		REQUIRE(in.good());
 		std::string line;
 		while (std::getline(in, line)) {

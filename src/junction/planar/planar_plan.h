@@ -60,7 +60,7 @@ PlanarRender RenderPlanarGeometry(const PlanarTopology &topology, const PlanarGe
 /** Render a component layout's route programs (DESIGN-components §6): each through RasterizeJunctionRoute (turn +1 is the rasteriser's L, a deck B<middle>), tagged edge = its path line, copy = its copy; the signal routes as the probe hook builds them; node and port tiles from the programs. */
 PlanarRender RenderPlanarRoutePrograms(const PlanarTopology &topology, const PlanarComponentLayout &layout);
 
-/** Render a drawn hub (D452, SPEC-slots-lengths §4.1): one JunctionTrackRoute per route path, each through RasterizeJunctionRoute on its move string and cross-checked tile by tile against the domain rasters of its tracks (tag edge = track index), with the signal network, node and port tiles; rows are not rendered; a tunnel is refused (no levels). */
+/** Render a drawn hub (D452, SPEC-slots-lengths §4.1): one JunctionTrackRoute per route path, each through RasterizeJunctionRoute on its move string and cross-checked tile by tile against the domain rasters of its tracks (tag edge = track index), with the signal network, node and port tiles; a prio row is no route and not in the layout: only its drawn beside run (the hub's row points without the first and last point, the domain's opening and closing steps) goes to `network.prio_rows` for the signal pass, which draws the chevron joins (D349, D455); a tunnel is refused (no levels). */
 PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub);
 
 /** A placed plan. */
