@@ -3887,6 +3887,105 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 	}
 }
 
+/** T1's contracted variant of the curve-spacing run (stage A's lengths in `t1-final-curves-stagea.drawing.txt`) and the final drawing's points (`t1-final-curves.drawing.txt`), both from the slotsstep2 probe with PLANAR_STAGEA_SAVE and PLANAR_FINAL_SAVE. */
+TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain][!shouldfail]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant v;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], v, why));
+	for (PlanarShapeTrack &track : v.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves-stagea.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		std::map<std::string, std::vector<int>> heads;
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+	PlanarShapeVariant plain = cv->v;
+	for (PlanarShapeTrack &track : plain.tracks) track.steps.clear();
+	X1Fixture fb(plain);
+
+	std::vector<std::vector<std::array<int, 2>>> points(fb.n);
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves.drawing.txt");
+		REQUIRE(in.good());
+		std::string line;
+		while (std::getline(in, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ls(line);
+			std::string word, track_name;
+			ls >> word >> track_name;
+			REQUIRE(word == "track");
+			const uint32_t t = fb.idx.at(track_name);
+			for (int x, y; ls >> x >> y;) points[t].push_back({x, y});
+		}
+	}
+	std::vector<std::string> notes;
+	const PlanarDomainVerdict d = CheckPlanarDomain(PlanarDomainInputOf(cv->v, points, notes));
+	REQUIRE(d.legal);
+	std::string hub_why;
+	const PlanarDrawnHub hub = PlanarDrawnHubOf(cv->v, points, notes, hub_why);
+	INFO("hub: " << hub_why);
+	REQUIRE(hub_why.empty());
+	INFO(HubTracksText(hub));
+	const std::vector<std::string> broken = CheckPlanarDrawnHub(hub);
+	INFO(JoinLines(broken));
+	CHECK(broken.empty());
+	const PlanarRender render = RenderPlanarDrawnHub(hub);
+	INFO("render: " << render.why);
+	REQUIRE(render.why.empty());
+
+	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator. */
+	std::map<std::pair<int, int>, unsigned> expected;
+	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		const std::vector<PlanarDomainPiece> pieces = RasterPlanarDomainTrack(hub.tracks[t].points).pieces;
+		for (uint32_t i = 0; i < pieces.size(); i++) {
+			const bool deck = std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t && i >= s.first && i <= s.last; });
+			if (!deck) expected[{pieces[i].tile.x, pieces[i].tile.y}] |= 1u << static_cast<unsigned>(pieces[i].track);
+		}
+	}
+	std::map<std::pair<int, int>, unsigned> actual;
+	for (const JunctionTrack &jt : render.layout.tracks) {
+		for (unsigned bit = 0; bit < 6; bit++) {
+			if (jt.tracks.Test(static_cast<Track>(bit))) actual[{jt.offset.x, jt.offset.y}] |= 1u << bit;
+		}
+	}
+	CHECK(actual == expected);
+}
+
 namespace {
 
 std::vector<Config> BR1Configs(const BridgeFixture &f)
@@ -7543,6 +7642,16 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		Contracted jc;
 		jc.v = plain;
 		jc.points = final_points;
+		if (const char *final_save = std::getenv("PLANAR_FINAL_SAVE"); final_save != nullptr) {
+			/* The final (polished) drawing's points per track, for a pin on fixed points. */
+			std::ofstream sf(final_save);
+			sf << "# final drawing of the slotsstep2 probe (" << tag << "): track <name> x0 y0 x1 y1 ...\n";
+			for (uint32_t t = 0; t < fb.n; t++) {
+				sf << "track " << fb.Name(t);
+				for (const auto &p : jc.points[t]) sf << " " << p[0] << " " << p[1];
+				sf << "\n";
+			}
+		}
 		if (const char *rig_out = std::getenv("PLANAR_RIG_OUT"); rig_out != nullptr) {
 			/* The drawn hub of the final drawing, rendered for the back end (D452) and written for the rig. */
 			std::string hub_why;
