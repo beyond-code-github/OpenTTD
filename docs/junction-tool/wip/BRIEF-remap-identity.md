@@ -26,3 +26,8 @@ Budget: 45 minutes. No solves.
 
 ## 6. Report
 References read; commit; red text; X2 after; `[planardomainexact]`, `[planardomain]`, `[contraction]` counts; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
+
+## Run 2 (2026-11-25, after run 1's stop: the image rule breaks D414/D438's along-the-tunnel family; the old rule keeps X2 exact)
+- **Rule, replacing part 1's:** candidates are the same-heading contracted piece pairs that touch (the old rule's set). When the crossing's original point exists (the two original event pieces meet in one point), keep only the candidates whose two pieces both contain that point. Pick the first remaining candidate in the old rule's order. When the point does not exist, the old rule unchanged. When the point exists and no candidate contains it, `ContractedVariant` returns nothing.
+- So: X2's crossing point lies on the arriving and the leaving diagonal; both stay candidates and the old order picks the arriving one (X2 exact). T2's crossing 5 at (18,19): the pair touching at (22,31) does not contain the point and drops out (structure 4 holds).
+- Gates as part 5, plus: X2 exact (0/0), the T2 contraction pin builds stage B's program, `[planardomain]` 44/44, `[contraction]` unchanged. Commit subject: `Fix: Junction: a contracted crossing keeps the touching pair at its own point`.
