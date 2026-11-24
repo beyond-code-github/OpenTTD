@@ -6870,7 +6870,7 @@ static void StageBOptions(const X1Fixture &fb, const Contracted &cv, const std::
 }
 
 /** The invariant (slots step 2 pin): every row of stage B's program holds on the contracted points of a stage A drawing (fixed points, no solve). The drawings are the fixtures `t1-stagea.drawing.txt` and `t2-stagea.drawing.txt` (PLANAR_STAGEA_SAVE of the slots probe). */
-static void CheckContractedDrawingSatisfiesStageB(const std::string &name)
+static void CheckContractedDrawingSatisfiesStageB(const std::string &name, const std::string &fixture = "stagea")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	{
@@ -6902,7 +6902,7 @@ static void CheckContractedDrawingSatisfiesStageB(const std::string &name)
 		{
 			std::string lower = name;
 			lower[0] = 't';
-			std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + lower + "-stagea.drawing.txt");
+			std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + lower + "-" + fixture + ".drawing.txt");
 			REQUIRE(in.good());
 			std::string word, track_name;
 			while (in >> word) {
@@ -6953,6 +6953,16 @@ TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (
 TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows (T2)", "[junction][contraction][!shouldfail]")
 {
 	CheckContractedDrawingSatisfiesStageB("T2");
+}
+
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows, stage A with grid parity and node gaps (T1)", "[junction][contraction]")
+{
+	CheckContractedDrawingSatisfiesStageB("T1", "stagea-rules");
+}
+
+TEST_CASE("planar slots: stage A's contracted drawing satisfies stage B's rows, stage A with grid parity and node gaps (T2)", "[junction][contraction]")
+{
+	CheckContractedDrawingSatisfiesStageB("T2", "stagea-rules");
 }
 
 /** Contraction diagnosis (hidden): the pinned fixtures before and after ContractedVariant, to stdout; PLANAR_CDIAG_T = 1 or 2 selects the topology. */

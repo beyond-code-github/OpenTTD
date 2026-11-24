@@ -1,0 +1,16 @@
+track EF1 0 11 0 2 2 0 8
+track CB1 4 15 2 0 2 0 0
+track ED1 30 3 2 0 0 0 0
+track AB1 32 7 0 8 2 0 2
+track CD1 11 30 0 0 2 4 2 1 0 0 0 1
+track AF1 17 24 1 0 1 0 0 0 0 4
+track A1 20 15 1 6 1 0 1
+track B1 20 15 4 0 0 0 2 0 0 0 2 0 0 0 2
+track C1 13 20 1 4 3 0 1
+track D1 13 20 2 0 0 0 12 0 0 0 0 0 0 1 14 2
+track E1 12 9 2 6 2 0 2
+track F1 12 9 1 0 0 0 1 0 0 0 1 0 0 0 0 6 2 2 0 2
+track B1#12 10 15 6
+track E1#13 24 3 6
+track B1#14 8 13 2
+track E1#15 26 1 2

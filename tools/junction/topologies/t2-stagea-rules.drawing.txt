@@ -1,0 +1,32 @@
+track EF1 0 1 0 0 2 6 4
+track EF2 0 3 0 0 0 0 10 0 0 0 0 1
+track CB1 3 10 1 0 0 0 0 0 0 0 0 2
+track CB2 7 8 1 0 0 0 0 0 0 0 0 6
+track ED1 36 19 2 0 2 4 0
+track ED2 28 31 1 0 1 4 8 2 0 0
+track AB1 44 31 20 0 2 2 2
+track AB2 44 29 0 6 6 1 0 0 0 0 0 1
+track CD1 3 42 12 0 0 0 2
+track CD2 5 42 0 2 2 0 2
+track AF1 13 32 6 0 2 2 0
+track AF2 7 36 2 2 2 0 0
+track A1 18 29 1 0 1 2 1
+track A2 30 33 4 0 2 4 10 0 0 0 0 1 4 1 0 1
+track B1 18 29 2 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 8 1 2 1 0 1
+track B2 30 33 2 8 2 0 2 0 1 10 2 0 0 0 2
+track C1 3 28 16 0 0 0 2
+track C2 3 36 2 0 2 4 10 0 0 0 8 0 0 0 2
+track D1 3 28 1 0 0 0 0 0 0 0 0 24 8 0 0 0
+track D2 3 36 2 6 1 0 0 0 0 0 0 14 0 2 4 2
+track E1 12 7 2 0 2 12 2
+track E2 11 4 1 0 1 6 1 0 1 4 8
+track F1 12 7 1 0 0 0 0 0 0 0 0 14 0 2 0 4 0 0 0 2 0 0 0 2
+track F2 11 4 2 2 2 0 12 0 2 2 2 0 2 4 2
+track B2#24 11 12 4
+track B1#25 8 15 5
+track E1#26 30 19 6
+track E2#27 23 26 5
+track B2#28 11 10 2
+track B1#29 8 13 3
+track E1#30 32 17 2
+track E2#31 25 26 3
