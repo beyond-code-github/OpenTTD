@@ -368,23 +368,32 @@ PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
 		for (const std::vector<uint32_t> &path : route.paths) {
 			std::vector<PlanarProgramPiece> ps;
 			std::vector<size_t> end_of; // per path track, the piece count up to and including it
-			std::optional<Trackdir> start;
+			JunctionRaster raster; // built from the domain raster, the game truth (D428)
 			for (size_t k = 0; k < path.size(); k++) {
 				const std::vector<PlanarDomainPiece> &pieces = rasters[path[k]].pieces;
-				if (!start.has_value() && !pieces.empty()) start = StartTrackdirOf(pieces.front());
 				for (uint32_t i = 0; i < pieces.size(); i++) {
-					ps.push_back({pieces[i].tile, static_cast<uint8_t>(pieces[i].heading), kind_of(path[k], i), static_cast<uint8_t>(k)});
+					const PlanarPiece::Kind kind = kind_of(path[k], i);
+					ps.push_back({pieces[i].tile, static_cast<uint8_t>(pieces[i].heading), kind, static_cast<uint8_t>(k)});
+					/* A bridge's heads and middles are on_bridge, two units each, as RasterizeJunctionRoute's B marks them. */
+					const bool on_bridge = kind != PlanarPiece::Kind::Ground;
+					const Trackdir trackdir = StartTrackdirOf(pieces[i]);
+					raster.pieces.push_back({pieces[i].tile, trackdir, static_cast<uint8_t>(on_bridge || IsDiagonalTrackdir(trackdir) ? 2 : 1), on_bridge});
+				}
+				for (const PlanarDrawnHub::Structure &s : hub.structures) {
+					if (s.separator != path[k] || s.first >= pieces.size() || s.last >= pieces.size()) continue;
+					JunctionBridge bridge{pieces[s.first].tile, pieces[s.last].tile, false};
+					if (bridge.start.x + bridge.start.y > bridge.end.x + bridge.end.y) std::swap(bridge.start, bridge.end);
+					raster.bridges.push_back(bridge);
 				}
 				end_of.push_back(ps.size());
 			}
-			const ProgramRaster raster = RasterOfProgram(ps, route.name, start);
-			if (!raster.why.empty()) {
-				out.why = raster.why;
+			if (ps.empty()) {
+				out.why = fmt::format("route {} has no pieces", route.name);
 				return out;
 			}
-			JunctionTrackRoute track{index++, 0, raster.raster.pieces, {}};
+			JunctionTrackRoute track{index++, 0, raster.pieces, {}};
 			for (const PlanarProgramPiece &piece : ps) track.tags.push_back({path[piece.line], JunctionTrackPieceTag::RUN, 0, 0});
-			AddRasterToLayout(out.layout, raster.raster);
+			AddRasterToLayout(out.layout, raster);
 
 			/* The signal pass's view (D301): a node between consecutive tracks; a split on the path's first piece has no arrival (ruling 2). */
 			JunctionSignalRoute signal;

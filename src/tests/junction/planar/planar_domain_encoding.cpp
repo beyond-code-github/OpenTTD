@@ -3888,7 +3888,7 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 }
 
 /** T1's contracted variant of the curve-spacing run (stage A's lengths in `t1-final-curves-stagea.drawing.txt`) and the final drawing's points (`t1-final-curves.drawing.txt`), both from the slotsstep2 probe with PLANAR_STAGEA_SAVE and PLANAR_FINAL_SAVE. */
-TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain][!shouldfail]")
+TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain]")
 {
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error, why;
