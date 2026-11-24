@@ -34,7 +34,7 @@ case "$mode" in
 esac
 log="$build/jt-$name.log"
 # Build first: a failed build must fail the run, never test a stale binary.
-if ! cmake --build "$build" --target openttd_test -j16 > "$build/jt-build.log" 2>&1; then
+if ! cmake --build "$build" --target openttd_test -j"${JT_JOBS:-16}" > "$build/jt-build.log" 2>&1; then
 	echo "jt: BUILD FAILED ($build/jt-build.log):" >&2; grep -m10 -E 'error|Error' "$build/jt-build.log" >&2; exit 1
 fi
 start=$(date +%s%N)
