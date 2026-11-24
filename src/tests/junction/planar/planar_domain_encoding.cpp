@@ -20,6 +20,7 @@
 #include "../../../junction/planar/planar_hub.h"
 #include "../../../junction/planar/planar_plan.h"
 #include "../../../junction/planar/planar_shape_layer.h"
+#include "../../../junction/planar/planar_slots.h"
 #include "../../../junction/planar/planar_structure.h"
 #include "../../../junction/planar/planar_topology.h"
 
@@ -7629,8 +7630,9 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 	}
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::ofstream md(std::getenv("PLANAR_STEP2B_OUT") != nullptr ? std::getenv("PLANAR_STEP2B_OUT") : "slots-step2b.md", std::ios::app);
-	for (const std::string name : {"T1", "T2"}) {
+	for (const std::string name : {"T1", "T2", "T3"}) {
 		if (hub_env != nullptr && name != hub_env) continue;
+		if (hub_env == nullptr && name == "T3" && std::getenv("PLANAR_D449_SLOTS") == nullptr) continue; // T3 only on request or for the D449 P2 probe
 		std::ostringstream out;
 		const auto flush = [&]() {
 			md << out.str() << std::flush;
@@ -7728,6 +7730,142 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		/* Stage A: no keep-apart rows, tidy on (D447). */
 		X1Fixture fa(v);
 		PlanarDrawOptions sa = SlotsStageADefaults(fa);
+		/* PLANAR_D449_SLOTS (D449 P2): v1's slot layer decides the S-bends. Every Line track's slot change between consecutive intervals of its channel (and every site link step) puts one flex insert on, turning the way the change goes (slots run left to right across travel; a heading increase is clockwise, a right turn: d = +1 is a step to the right); every other insert is held at 0. */
+		const bool d449 = std::getenv("PLANAR_D449_SLOTS") != nullptr;
+		std::vector<std::vector<double>> d449_lock;
+		if (d449) {
+			uint64_t o_bits = 0, tie_bits = 0, flip_bits = 0, mover_bits = 0;
+			{
+				/* The tag is o<over>t<ties>f<flips>m<movers>. */
+				const std::string &tg = v.structure.tag;
+				size_t at = 0;
+				for (uint64_t *dst : {&o_bits, &tie_bits, &flip_bits, &mover_bits}) {
+					REQUIRE(at < tg.size());
+					at++;
+					const auto r = std::from_chars(tg.data() + at, tg.data() + tg.size(), *dst);
+					at = static_cast<size_t>(r.ptr - tg.data());
+				}
+			}
+			const PlanarChannels dch = FlipPlanarTriangles(BuildPlanarChannels(topology), flip_bits);
+			std::string dwhy;
+			const std::vector<PlanarResolvedSite> dsites = ResolvePlanarSites(topology, dch, tie_bits, dwhy);
+			REQUIRE(dwhy.empty());
+			const std::vector<uint32_t> dover = PlanarChannelOver(dch, o_bits);
+			const auto slot_start = std::chrono::steady_clock::now();
+			const PlanarSlots slots = BuildPlanarSlots(topology, dch, dsites, dover);
+			const double slot_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - slot_start).count();
+			out << std::format("- {} D449 slots {}: {} {:.1f} ms objective {}\n", tag, v.structure.tag, slots.why.empty() ? "Optimal" : slots.why, slot_ms, slots.objective);
+			flush();
+			REQUIRE(slots.why.empty());
+			const PlanarTrackMap &dm = v.structure.map;
+			size_t extra_lines = 0;
+			for (size_t t = topology.lines.size(); t < dm.tracks.size(); t++) extra_lines += dm.tracks[t].kind == PlanarTrack::Kind::Line ? 1 : 0;
+			/* The sign check: consecutive lines of a channel, slot order against the face map's side (+1: the later line lies right of the earlier). */
+			const PlanarLineSides dsides(topology, dch);
+			size_t pair_right = 0, pair_left = 0, pair_none = 0;
+			for (const PlanarChannel &cc : dch.channels) {
+				for (size_t j = 0; j + 1 < cc.lines.size(); j++) {
+					const int8_t sd = dsides.Side(cc.lines[j + 1], cc.lines[j]);
+					(sd > 0 ? pair_right : sd < 0 ? pair_left : pair_none)++;
+				}
+			}
+			std::set<std::pair<uint32_t, uint32_t>> on;
+			size_t n_change = 0, n_link = 0, n_none = 0, n_shared = 0, n_big = 0;
+			std::string none_list;
+			const auto place = [&](uint32_t line, uint32_t lo, uint32_t hi, bool at_end, int delta, const std::string &what) {
+				const PlanarShapeTrack &st = v.tracks[line];
+				const int want = delta > 0 ? 1 : -1;
+				std::vector<uint32_t> middles = st.flex;
+				std::ranges::sort(middles);
+				uint32_t pick = UINT32_MAX, fallback = UINT32_MAX;
+				for (const uint32_t m : middles) {
+					if (m < 1 || m < lo || m > hi) continue;
+					if ((st.pieces[m] > st.pieces[m - 1] ? 1 : -1) != want) continue;
+					uint32_t &slot = on.contains({line, m}) ? fallback : pick;
+					if (at_end || slot == UINT32_MAX) slot = m;
+				}
+				if (std::abs(delta) > 1) n_big++;
+				if (pick == UINT32_MAX && fallback != UINT32_MAX) {
+					pick = fallback;
+					n_shared++;
+				}
+				if (pick == UINT32_MAX) {
+					n_none++;
+					none_list += std::format(" ({} {} delta {} pieces {}..{})", dm.tracks[line].name, what, delta, lo, hi);
+					return;
+				}
+				on.insert({line, pick});
+			};
+			for (uint32_t c = 0; c < dch.channels.size(); c++) {
+				const PlanarChannel &cc = dch.channels[c];
+				const size_t k = cc.crossings.size();
+				const size_t intervals = k == 0 ? 2 : 2 * k + 1;
+				REQUIRE(slots.channels[c].size() == intervals);
+				for (const uint32_t line : cc.lines) {
+					const PlanarShapeTrack &st = v.tracks[line];
+					const std::vector<uint32_t> &ev = dm.events[line];
+					std::vector<uint32_t> first(k), last(k);
+					for (size_t i = 0; i < k; i++) {
+						const std::vector<uint32_t> &lc = dch.crossings[cc.crossings[i]].line_crossings;
+						size_t lo_pos = SIZE_MAX, hi_pos = 0;
+						for (size_t j = 0; j < ev.size(); j++) {
+							if (std::ranges::find(lc, ev[j]) == lc.end()) continue;
+							lo_pos = std::min(lo_pos, j);
+							hi_pos = std::max(hi_pos, j);
+						}
+						REQUIRE(lo_pos != SIZE_MAX);
+						first[i] = st.event_piece[lo_pos];
+						last[i] = st.event_piece[hi_pos];
+						REQUIRE(first[i] <= last[i]);
+						REQUIRE((i == 0 || last[i - 1] <= first[i]));
+					}
+					std::vector<int> sl(intervals, 0);
+					for (size_t iv = 0; iv < intervals; iv++) {
+						bool found = false;
+						for (const PlanarSlotTrack &tr : slots.channels[c][iv].tracks) {
+							if (tr.kind == PlanarSlotKind::Line && tr.line == line) {
+								sl[iv] = tr.slot;
+								found = true;
+							}
+						}
+						REQUIRE(found);
+					}
+					const uint32_t last_piece = static_cast<uint32_t>(st.pieces.size() - 1);
+					for (size_t iv = 0; iv + 1 < intervals; iv++) {
+						const int delta = sl[iv + 1] - sl[iv];
+						if (delta == 0) continue;
+						n_change++;
+						const std::string what = std::format("{}>{}", slots.channels[c][iv].name, slots.channels[c][iv + 1].name);
+						if (k == 0) {
+							place(line, 0, last_piece, !topology.lines[line].to.port, delta, what);
+						} else if (iv % 2 == 0) { // into crossing iv/2: in the interval before it, nearest the crossing
+							place(line, iv == 0 ? 0 : last[iv / 2 - 1], first[iv / 2], true, delta, what);
+						} else { // out of crossing (iv - 1) / 2: in the interval after it, nearest the crossing
+							const size_t i = (iv - 1) / 2;
+							place(line, last[i], iv + 1 == intervals - 1 ? last_piece : first[i + 1], false, delta, what);
+						}
+					}
+				}
+			}
+			for (const PlanarSlotLink &link : slots.links) {
+				if (link.step == 0) continue;
+				n_link++;
+				const PlanarShapeTrack &st = v.tracks[link.to];
+				place(link.to, 0, st.event_piece.empty() ? static_cast<uint32_t>(st.pieces.size() - 1) : st.event_piece[0], false, link.step, "link");
+			}
+			d449_lock.assign(v.tracks.size(), {});
+			for (size_t t = 0; t < v.tracks.size(); t++) d449_lock[t].assign(v.tracks[t].pieces.size(), 0.0);
+			size_t flex_total = 0;
+			for (const PlanarShapeTrack &st : v.tracks) flex_total += st.flex.size();
+			out << std::format("- {} D449 map: changes {} links {} (|delta|>1: {}), inserts on {} of {}, shared {}, no insert {}{}, extra Line parts {}; slot order vs face side over {} adjacent pairs: later-right {}, later-left {}, undecided {}\n", tag, n_change, n_link, n_big, on.size(), flex_total, n_shared, n_none, none_list, extra_lines, pair_right + pair_left + pair_none, pair_right, pair_left, pair_none);
+			for (const auto &[t, m] : on) {
+				d449_lock[t][m] = 1;
+				out << std::format("D449ON {} {} t {} m {} d {}\n", name, dm.tracks[t].name, t, m, v.tracks[t].pieces[m] > v.tracks[t].pieces[m - 1] ? 1 : -1);
+			}
+			sa.curve_flex_from = &d449_lock;
+			sa.curve_flex_free = false;
+			flush();
+		}
 		/* The v1 rule set is on by default; each PLANAR_NO_<RULE> turns one off (the probe-defaults brief). */
 		if (std::getenv("PLANAR_NO_GRID_COND") != nullptr) sa.grid_conditional = false;
 		if (std::getenv("PLANAR_NO_STAGEA_NODEGAPS") != nullptr) sa.node_gaps = false;
@@ -8057,6 +8195,22 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		Contracted jc;
 		jc.v = plain;
 		jc.points = final_points;
+		if (d449) {
+			/* The final drawing's track length (sum of the piece extents, as the polish line's total) and box. */
+			int x_lo = INT_MAX, x_hi = INT_MIN, y_lo = INT_MAX, y_hi = INT_MIN;
+			long length = 0;
+			for (const auto &pts : final_points) {
+				for (size_t i = 0; i < pts.size(); i++) {
+					x_lo = std::min(x_lo, pts[i][0]);
+					x_hi = std::max(x_hi, pts[i][0]);
+					y_lo = std::min(y_lo, pts[i][1]);
+					y_hi = std::max(y_hi, pts[i][1]);
+					if (i > 0) length += std::max(std::abs(pts[i][0] - pts[i - 1][0]), std::abs(pts[i][1] - pts[i - 1][1]));
+				}
+			}
+			out << std::format("- {} D449 final: track length {} box {} x {} area {}\n", tag, length, x_hi - x_lo, y_hi - y_lo, static_cast<long>(x_hi - x_lo) * (y_hi - y_lo));
+			flush();
+		}
 		if (const char *final_save = std::getenv("PLANAR_FINAL_SAVE"); final_save != nullptr) {
 			/* The final (polished) drawing's points per track, for a pin on fixed points. */
 			std::ofstream sf(final_save);
