@@ -7546,6 +7546,76 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 	return true;
 }
 
+namespace {
+
+/** Stage A's probe defaults (D447, the probe-defaults brief): no keep-apart rows, tidy on, the v1 rule set on. */
+PlanarDrawOptions SlotsStageADefaults(const X1Fixture &fa)
+{
+	PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
+	sa.keep_apart_out = true;
+	sa.only_pairs_on = true;
+	sa.grid_conditional = true;
+	sa.node_gaps = true;
+	sa.node_gap_from = nullptr;
+	sa.coverage = true;
+	sa.program_out = true;
+	sa.flank_turn = true;
+	sa.node_flank = true;
+	sa.node_cusp = true;
+	return sa;
+}
+
+/** T1 or T2 as the slots probe builds it for stage A: Shape's variant with its flex middles placed. */
+PlanarShapeVariant SlotsStageAVariant(int which)
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(which), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	return v;
+}
+
+} // namespace
+
+/** D384 (coverage): stage A's model can hold its prio rows at exactly their coverage; the LP (coverage elastic, every other row hard) has no slack. */
+TEST_CASE("planar slots: T2's stage A can hold its prio rows at exactly their coverage (LP, D384)", "[junction][planardraw][coverage]")
+{
+	for (const int which : {1, 2}) {
+		const PlanarShapeVariant v = SlotsStageAVariant(which);
+		const X1Fixture fa(v);
+		PlanarDrawOptions sa = SlotsStageADefaults(fa);
+		sa.coord_max = 128;
+		sa.elastic = true;
+		sa.elastic_families = {"coverage"};
+		const PlanarDrawResult a = CheckPlanarDrawable(v, 15.0, sa);
+		std::cout << std::format("T{} coverage LP: {} {} ms, total slack {}, stretched {}\n", which, a.status, static_cast<int>(a.ms), a.slack, a.stretched.size());
+		for (const auto &[tag, s] : a.stretched) std::cout << std::format("  [{} slack {}]\n", tag, s);
+		for (const PlanarProgram::Row &r : a.program.rows) {
+			if (r.tag.starts_with("coverage ")) std::cout << std::format("  row {}: [{}, {}]\n", r.tag, r.lower, r.upper);
+		}
+		CHECK(a.status == "Optimal");
+		CHECK(a.slack < 1e-6);
+	}
+}
+
 /** Slots step 2b (measurement): stage B from the suite's own contraction (ContractedVariant) of stage A's drawing, on T1 and T2. */
 TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 (step 2b)", "[.][slotsstep2]")
 {
@@ -7593,23 +7663,12 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 
 		/* Stage A: no keep-apart rows, tidy on (D447). */
 		X1Fixture fa(v);
-		PlanarDrawOptions sa = SlotsOptions(fa, DEFAULT_RULES);
-		sa.node_gaps = false;
-		sa.keep_apart_out = true;
-		sa.only_pairs_on = true;
+		PlanarDrawOptions sa = SlotsStageADefaults(fa);
 		/* The v1 rule set is on by default; each PLANAR_NO_<RULE> turns one off (the probe-defaults brief). */
-		if (std::getenv("PLANAR_NO_GRID_COND") == nullptr) {
-			sa.grid_conditional = true;
-			sa.program_out = true; // to count the `grid run` rows
-		}
-		if (std::getenv("PLANAR_NO_STAGEA_NODEGAPS") == nullptr) {
-			sa.node_gaps = true;
-			sa.node_gap_from = nullptr;
-		}
-		if (std::getenv("PLANAR_NO_COVERAGE") == nullptr) {
-			sa.coverage = true;
-			sa.program_out = true; // to count the `coverage` rows
-		}
+		if (std::getenv("PLANAR_NO_GRID_COND") != nullptr) sa.grid_conditional = false;
+		if (std::getenv("PLANAR_NO_STAGEA_NODEGAPS") != nullptr) sa.node_gaps = false;
+		if (std::getenv("PLANAR_NO_COVERAGE") != nullptr) sa.coverage = false;
+		sa.program_out = sa.grid_conditional || sa.coverage; // to count the `grid run` and `coverage` rows
 		sa.flank_turn = std::getenv("PLANAR_NO_FLANK") == nullptr;
 		if (const char *k = std::getenv("PLANAR_FLANK_K"); k != nullptr) sa.flank_k = std::atof(k);
 		if (std::getenv("PLANAR_STAGEA_NOTIDY") != nullptr) sa.tidy = false;
