@@ -14,6 +14,9 @@ B decides, per channel and per channel crossing k (interval x<k>), every track's
 - Keep-apart: pairs between two tracks of one channel whose walls lie between two consecutive channel crossings of that channel and that are adjacent in B's order keep their rows (B's offset fixes their side; a later option may fix it as a plain row).
 Mapping B's tracks to C's: a B Line track is C's track with the same topology line index (C's lines come first at their topology index); a B Copy is C's copy over the same run (C's copies are made per run with full share, D331/D332; match by (line, crossing run)); B has no Row tracks, so prio rows get no slot rows (they follow their lane by the corridor family). Unmatched B tracks: counted, no rows.
 
+## Expressiveness guard (engineer, 2026-11-25: compactness is why SSS exists; A's fixed shapes made errors "almost impossible to close")
+B's offsets must never become a hard limit on what C can draw. Two forms, measured side by side: (H) hard rows as above (a fast chooser, may cut compact drawings); (S) the same rows elastic, priced in the objective (a warm start C may leave). The verdict compares compactness against C's free optimum where one exists (T1, the CP-SAT T2 witness) and against the answer key's representability (V's 197 stays representable: the rows are per variant, absent for a pinned variant).
+
 ## Probe
 1. `PlanarDrawOptions::slot_offsets` (pointer to a list of (a, b, crossing a-y, crossing b-y, lanes) entries, null = off), filled by a test-side function from `BuildPlanarSlots` on the same variant's channels, sites and over choice (C's Structure variant carries `channels`, sites and the over bits; if C's over differs from what B needs, stop and report).
 2. T2: B's slots on C's top variant; stage A (no keep-apart, flank rows, curves) with the slot rows; contraction; stage B; judge and domain; time each.
