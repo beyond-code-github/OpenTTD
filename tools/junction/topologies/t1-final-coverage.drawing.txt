@@ -1,0 +1,17 @@
+# final drawing of the slotsstep2 probe (STEP2B T1): track <name> x0 y0 x1 y1 ...
+track EF1 0 11 8 3 14 3
+track CB1 6 15 0 15
+track ED1 52 3 58 3 72 17
+track AB1 72 21 62 21
+track CD1 49 38 49 22 47 20
+track AF1 55 34 53 36 53 38
+track A1 62 21 57 26 57 32 55 34
+track B1 62 21 54 21 48 15 42 15
+track C1 47 20 44 17 8 17 6 15
+track D1 47 20 47 8 52 3
+track E1 14 3 16 3
+track F1 14 3 16 5 40 5 48 13 50 13 55 18 55 34
+track B1#12 42 15 6 15
+track E1#13 16 3 52 3
+track B1#14 40 13 8 13
+track E1#15 18 1 50 1
