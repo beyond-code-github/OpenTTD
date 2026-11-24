@@ -297,7 +297,10 @@ TEST_CASE("PlaceJunctionSignals: prio side and join pieces", "[junction][signals
  * The prio violations of the mapped path's signal pass on a main line and its joiner: both rasterised into a layout, signalled by SignalJunctionTrackRoutes
  * with the network the planar model builds (the main line's merge on its piece before the joiner's last), then checked.
  */
-static std::vector<RuleViolation> PrioPassViolations(const JunctionRoute &ml, const JunctionRoute &joiner, std::string &report, int prio_tiles = -1, JunctionLayout *passed = nullptr)
+/** The rows a test gives the pass: from the main line's raster, the joiner's raster, the main line's merge piece and the joiner's. */
+using RowsOf = std::vector<std::vector<JunctionPiece>> (*)(const JunctionRaster &, const JunctionRaster &, size_t, size_t);
+
+static std::vector<RuleViolation> PrioPassViolations(const JunctionRoute &ml, const JunctionRoute &joiner, std::string &report, int prio_tiles = -1, JunctionLayout *passed = nullptr, RowsOf rows_of = nullptr)
 {
 	const JunctionSpec spec = [&] { JunctionSpec s = MakeTestJunctionSpec(); s.prio_tiles = prio_tiles < 0 ? s.tl : prio_tiles; s.prio_strict = false; return s; }();
 	const JunctionRaster ml_raster = RasterizeJunctionRoute(ml);
@@ -335,6 +338,7 @@ static std::vector<RuleViolation> PrioPassViolations(const JunctionRoute &ml, co
 	joiner_signal.group = 'B';
 	joiner_signal.arrivals.emplace_back(0, k);
 	network.routes = {ml_signal, joiner_signal};
+	if (rows_of != nullptr) network.prio_rows = rows_of(ml_raster, joiner_raster, j, k);
 
 	std::string why;
 	SignalJunctionTrackRoutes(layout, routes, network, spec, &why);
@@ -411,4 +415,72 @@ TEST_CASE("PlaceJunctionSignals: a straight prio is drawn as the pattern for eve
 			CHECK(std::ranges::any_of(layout.signals, [&](const JunctionSignal &signal) { return signal.offset.x == merge_x - s && signal.offset.y == 1 && signal.facing == Trackdir::X_SW; }));
 		}
 	}
+}
+
+/**
+ * The drawn beside run of a prio row for a main line (D349, D353, D455): per main-line piece up to the merge, the row piece beside it: on the side tile with the
+ * same trackdir beside an axis piece, on the same tile on the opposite half beside a 45 degree piece. The row's last piece is beside the merge piece. Its side is
+ * away from the joiner's piece before the merge.
+ */
+static std::vector<std::vector<JunctionPiece>> BesideRun(const JunctionRaster &ml, const JunctionRaster &joiner, size_t j, size_t k)
+{
+	const TileIndexDiffC merge = ml.pieces[j].tile;
+	const TileIndexDiffC from = joiner.pieces[k - 1].tile;
+	const bool along_x = TrackdirToTrack(ml.pieces[j].trackdir) == Track::X;
+	const int dx = along_x ? 0 : (merge.x > from.x) - (merge.x < from.x), dy = along_x ? (merge.y > from.y) - (merge.y < from.y) : 0; // across the main line, away from the joiner
+	std::vector<JunctionPiece> row;
+	for (size_t i = j >= 12 ? j - 12 : 0; i <= j; i++) {
+		JunctionPiece piece = ml.pieces[i];
+		if (IsDiagonalTrackdir(piece.trackdir)) {
+			piece.tile = {static_cast<int16_t>(piece.tile.x + dx), static_cast<int16_t>(piece.tile.y + dy)};
+		} else {
+			switch (piece.trackdir) {
+				case Trackdir::Upper_E: piece.trackdir = Trackdir::Lower_E; break;
+				case Trackdir::Lower_E: piece.trackdir = Trackdir::Upper_E; break;
+				case Trackdir::Upper_W: piece.trackdir = Trackdir::Lower_W; break;
+				case Trackdir::Lower_W: piece.trackdir = Trackdir::Upper_W; break;
+				case Trackdir::Left_S: piece.trackdir = Trackdir::Right_S; break;
+				case Trackdir::Right_S: piece.trackdir = Trackdir::Left_S; break;
+				case Trackdir::Left_N: piece.trackdir = Trackdir::Right_N; break;
+				default: piece.trackdir = Trackdir::Left_N; break;
+			}
+		}
+		row.push_back(piece);
+	}
+	return {row};
+}
+
+TEST_CASE("SignalJunctionTrackRoutes: a given prio row beside a straight main line is placed like the pattern", "[junction][signals]")
+{
+	const JunctionRoute ml = R(0, 1, Trackdir::X_SW, Repeat('F', 28));
+	const JunctionRoute joiner = R(12, 0, Trackdir::X_SW, "LFR");
+	for (int prio_tiles = 2; prio_tiles <= 8; prio_tiles += 2) {
+		std::string report_pattern, report_given;
+		JunctionLayout pattern, given;
+		PrioPassViolations(ml, joiner, report_pattern, prio_tiles, &pattern);
+		const std::vector<RuleViolation> violations = PrioPassViolations(ml, joiner, report_given, prio_tiles, &given, BesideRun);
+		INFO("prio_tiles " << prio_tiles << "\n" << report_given);
+		CHECK(violations.empty());
+		/* The search takes the fewest elements the checker accepts, so it may be shorter than the pattern; it agrees with it at the merge tile and its row signals face against the row. */
+		CHECK(Bits(given, 13, 2) == Bits(pattern, 13, 2));
+		CHECK(Bits(given, 13, 1) == Bits(pattern, 13, 1));
+		int row_signals = 0;
+		for (const JunctionSignal &signal : given.signals) {
+			if (signal.offset.y != 2) continue;
+			row_signals++;
+			CHECK(signal.facing == Trackdir::X_NE);
+		}
+		CHECK(row_signals > 0);
+		CHECK(std::ranges::any_of(given.signals, [](const JunctionSignal &signal) { return signal.offset.y == 2 && signal.type == SignalType::Exit; }));
+	}
+}
+
+TEST_CASE("SignalJunctionTrackRoutes: a given prio row beside a 45 degree main line is on the opposite half (D353)", "[junction][signals]")
+{
+	/* The bent main line of the bend test: the row runs on the opposite half of the diagonal pieces' tiles, accepted by CheckPrio and CheckPrioReach. */
+	std::string report;
+	JunctionLayout layout;
+	const std::vector<RuleViolation> violations = PrioPassViolations(R(0, 5, Trackdir::X_SW, "FFRRFFFFF"), R(4, 5, Trackdir::Y_NW, "FFFRFL"), report, -1, &layout, BesideRun);
+	INFO(report);
+	CHECK(violations.empty());
 }

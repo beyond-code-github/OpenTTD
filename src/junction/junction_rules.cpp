@@ -1388,6 +1388,12 @@ std::vector<RuleViolation> CheckPrio(const JunctionCheckContext &ctx)
 					}
 				}
 				if (is_join) continue;
+				/* A row beside a 45 degree stretch of the ML runs on the opposite half of the ML's tiles: separate track, allowed (D353; prio reach judges it). */
+				if (!IsDiagonalTrackdir(p_piece.trackdir)) {
+					const Track ml_half = TrackdirToTrack(p_piece.trackdir);
+					const Track opposite = ml_half == Track::Upper ? Track::Lower : ml_half == Track::Lower ? Track::Upper : ml_half == Track::Left ? Track::Right : Track::Left;
+					if (unused[key] == TrackBits{opposite}) continue;
+				}
 				if (TracksAt(layout, to_tile(key)) == cross_bits && unused[key].Test(perp) && !unused[key].Test(axis)) {
 					AddViolation(out, JunctionRule::Prio, to_tile(key), "prio rung must be a streamlined join");
 				} else {

@@ -11,7 +11,9 @@
 
 #include "../../../3rdparty/catch2/catch.hpp"
 
+#include "../../../junction/junction_rules.h"
 #include "../../../junction/junction_spec.h"
+#include "../../../track_func.h"
 #include "../../../junction/planar/planar_domain.h"
 #include "../../../junction/planar/planar_domain_map.h"
 #include "../../../junction/planar/planar_draw.h"
@@ -3881,6 +3883,91 @@ TEST_CASE("planar domain: the drawn hub of BR1 holds its contract and renders fo
 	CHECK(why.empty());
 }
 
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology, const std::string &stem = "t1-final-curves");
+
+TEST_CASE("planar domain: a drawn hub's prio is placed on its own row (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	/* The coverage-sized drawings: each row is exactly its coverage long (D384). */
+	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology, "t1-final-coverage");
+	const PlanarRender render = RenderPlanarDrawnHub(hub);
+	INFO("render: " << render.why);
+	REQUIRE(render.why.empty());
+	CHECK(!render.network.prio_rows.empty());
+
+	JunctionLayout layout = render.layout;
+	std::string why;
+	const std::vector<JunctionTrackSignal> tokens = SignalJunctionTrackRoutes(layout, render.routes, render.network, spec, &why);
+	INFO("signals: " << why);
+	REQUIRE(why.empty());
+
+	/* The layout holds the tile of every row's last piece (beside its merge) with the row's own track. */
+	for (const std::vector<JunctionPiece> &row : render.network.prio_rows) {
+		REQUIRE(!row.empty());
+		const JunctionPiece &end = row.back();
+		const bool drawn = std::ranges::any_of(layout.tracks, [&](const JunctionTrack &jt) { return jt.offset.x == end.tile.x && jt.offset.y == end.tile.y && jt.tracks.Test(TrackdirToTrack(end.trackdir)); });
+		CHECK(drawn);
+	}
+	/* Every signal on a row tile came from the prio placement (a Reason::Prio token); the ordinary phases never signal a row (D452, D455). */
+	for (const std::vector<JunctionPiece> &row : render.network.prio_rows) {
+		for (const JunctionPiece &piece : row) {
+			for (const JunctionSignal &signal : layout.signals) {
+				if (signal.offset.x != piece.tile.x || signal.offset.y != piece.tile.y) continue;
+				const bool prio_token = std::ranges::any_of(tokens, [&](const JunctionTrackSignal &token) {
+					return token.reason == JunctionSignalReason::Prio && token.tile.x == signal.offset.x && token.tile.y == signal.offset.y && token.facing == signal.facing;
+				});
+				CHECK(prio_token);
+			}
+		}
+	}
+
+	/* The prio rules on the signalled layout, judged on the routes' own lane paths (the pass's context): the checker's boundary port search cannot find the hub's ports, which start on half pieces. */
+	JunctionTopology checker;
+	std::vector<JunctionPath> paths;
+	for (size_t r = 0; r < render.routes.size(); r++) {
+		const uint16_t slot = static_cast<uint16_t>(render.network.routes[r].group);
+		JunctionPath path;
+		path.from = JunctionPortRole::EIn;
+		path.to = JunctionPortRole::EOut;
+		path.pieces = render.routes[r].pieces;
+		path.from_slot = slot;
+		path.to_slot = slot;
+		paths.push_back(std::move(path));
+		if (std::ranges::none_of(checker.lane_paths, [&](const JunctionLanePath &lane) { return lane.from == slot; })) checker.lane_paths.push_back({slot, slot, 0, render.network.routes[r].main});
+	}
+	const JunctionCheckContext ctx{layout, spec, &checker, {}, {}, {}, std::move(paths), {}};
+	std::vector<RuleViolation> prio = CheckPrio(ctx);
+	for (RuleViolation &v : CheckPrioReach(ctx)) prio.push_back(std::move(v));
+	for (const RuleViolation &v : prio) UNSCOPED_INFO(v.message << " at " << v.tile.x << "," << v.tile.y);
+	CHECK(prio.empty());
+}
+
+TEST_CASE("planar domain: the drawn hub carries no route path on a prio row (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
+	CHECK(CheckPlanarDrawnHub(hub).empty());
+	uint32_t row = 0;
+	while (row < hub.tracks.size() && hub.tracks[row].kind != PlanarTrack::Kind::Row) row++;
+	REQUIRE(row < hub.tracks.size());
+	for (const PlanarDrawnHub::Route &r : hub.routes) {
+		for (const std::vector<uint32_t> &path : r.paths) CHECK(std::ranges::find(path, row) == path.end());
+	}
+	/* A path on the row, by hand: the oracle names it once. */
+	hub.routes.front().paths.push_back({row});
+	const std::vector<std::string> lines = CheckPlanarDrawnHub(hub);
+	INFO(JoinLines(lines));
+	REQUIRE(lines.size() == 1);
+	CHECK(lines[0].find("route " + hub.routes.front().name) != std::string::npos);
+	CHECK(lines[0].find(hub.tracks[row].name) != std::string::npos);
+}
+
 TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", "[junction][planar][planardomain]")
 {
 	const BridgeFixture f;
@@ -3933,12 +4020,9 @@ TEST_CASE("planar domain: the drawn hub oracle names each broken promise once", 
 }
 
 /** T1's contracted variant of the curve-spacing run (stage A's lengths in `t1-final-curves-stagea.drawing.txt`) and the final drawing's points (`t1-final-curves.drawing.txt`), both from the slotsstep2 probe with PLANAR_STAGEA_SAVE and PLANAR_FINAL_SAVE. */
-TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain]")
+static PlanarDrawnHub T1CurvesDrawnHub(const JunctionSpec &spec, const PlanarTopology &topology, const std::string &stem)
 {
-	const JunctionSpec spec = MakeTestJunctionSpec();
-	std::string error, why;
-	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
-	REQUIRE(error.empty());
+	std::string why;
 	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
 	REQUIRE(!sr.variants.empty());
 	PlanarShapeVariant v;
@@ -3959,7 +4043,7 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 	X1Fixture fa(v);
 	Geometry g;
 	{
-		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves-stagea.drawing.txt");
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + stem + "-stagea.drawing.txt");
 		REQUIRE(in.good());
 		std::string word, track_name;
 		while (in >> word) {
@@ -3985,7 +4069,7 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 
 	std::vector<std::vector<std::array<int, 2>>> points(fb.n);
 	{
-		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-final-curves.drawing.txt");
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/" + stem + ".drawing.txt");
 		REQUIRE(in.good());
 		std::string line;
 		while (std::getline(in, line)) {
@@ -4005,6 +4089,16 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 	const PlanarDrawnHub hub = PlanarDrawnHubOf(cv->v, points, notes, hub_why);
 	INFO("hub: " << hub_why);
 	REQUIRE(hub_why.empty());
+	return hub;
+}
+
+TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T1 with curves)", "[junction][planar][planardomain]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarDrawnHub hub = T1CurvesDrawnHub(spec, topology);
 	INFO(HubTracksText(hub));
 	const std::vector<std::string> broken = CheckPlanarDrawnHub(hub);
 	INFO(JoinLines(broken));
@@ -4013,9 +4107,10 @@ TEST_CASE("planar domain: the drawn hub renders every domain-accepted drawing (T
 	INFO("render: " << render.why);
 	REQUIRE(render.why.empty());
 
-	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator. */
+	/* The layout's track bits per tile: every track's domain raster minus each structure's first..last on its separator; a prio row is no route, so the signal pass draws it, not the render (D452). */
 	std::map<std::pair<int, int>, unsigned> expected;
 	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		if (hub.tracks[t].kind == PlanarTrack::Kind::Row) continue;
 		const std::vector<PlanarDomainPiece> pieces = RasterPlanarDomainTrack(hub.tracks[t].points).pieces;
 		for (uint32_t i = 0; i < pieces.size(); i++) {
 			const bool deck = std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t && i >= s.first && i <= s.last; });

@@ -445,6 +445,26 @@ PlanarRender RenderPlanarDrawnHub(const PlanarDrawnHub &hub)
 			out.routes.push_back(std::move(track));
 		}
 	}
+	/* The prio rows are real tracks of the hub (D349) but never drivable (D455): only the drawn beside run goes to the signal pass, the hub's row points without the opening and closing steps the domain input adds (the first and last point), and the signal pass draws every join as a chevron (D452). They join no route, layout, node or port tile. */
+	for (uint32_t t = 0; t < hub.tracks.size(); t++) {
+		if (hub.tracks[t].kind != PlanarTrack::Kind::Row) continue;
+		if (std::ranges::any_of(hub.structures, [&](const PlanarDrawnHub::Structure &s) { return s.separator == t; })) {
+			out.why = fmt::format("prio row {} lies on a bridge", hub.tracks[t].name);
+			return out;
+		}
+		const std::vector<std::array<int, 2>> &points = hub.tracks[t].points;
+		if (points.size() < 3) {
+			out.why = fmt::format("prio row {} has no beside run", hub.tracks[t].name);
+			return out;
+		}
+		const PlanarDomainRaster run = RasterPlanarDomainTrack(std::vector<std::array<int, 2>>(points.begin() + 1, points.end() - 1));
+		std::vector<JunctionPiece> row;
+		for (const PlanarDomainPiece &piece : run.pieces) {
+			const Trackdir trackdir = StartTrackdirOf(piece);
+			row.push_back({piece.tile, trackdir, static_cast<uint8_t>(IsDiagonalTrackdir(trackdir) ? 2 : 1), false});
+		}
+		out.network.prio_rows.push_back(std::move(row));
+	}
 	for (size_t n = 0; n < hub.nodes.size(); n++) {
 		if (!node_done[n]) {
 			out.why = fmt::format("node {} lies on no route path", n);
