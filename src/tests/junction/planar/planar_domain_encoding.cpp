@@ -7136,9 +7136,9 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 	}
 	PlanarDrawOptions sp = sb;
 	sp.tidy = true;
-	sp.keep_apart_out = true;
-	sp.only_pairs_on = true;
-	sp.only_pairs = b.list;
+	sp.keep_apart_out = false; // the read-out is binary mode only; sides_from is not
+	sp.only_pairs_on = false; // every keep-apart pair gets rows, each on the side stage B's clean drawing gives
+	sp.sides_from = &b.last.points;
 	sp.coord_max = std::max(64, (2 * biggest_b + 15) / 16 * 16);
 	sp.start_points = &b.last.points;
 	const PlanarDrawResult pr = CheckPlanarDrawable(plain, 3.0, sp);
@@ -7149,7 +7149,7 @@ static bool StageBToDomain(const Contracted &cv, const std::string &tag, std::os
 		}
 		return sum;
 	};
-	out << std::format("- {} polish{}: {} {} ms length before {} after {}\n", tag, b_curves ? " curves+bays" : "", pr.status, static_cast<int>(pr.ms), total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
+	out << std::format("- {} polish{}: {} {} ms short_sides {} length before {} after {}\n", tag, b_curves ? " curves+bays" : "", pr.status, static_cast<int>(pr.ms), pr.short_sides, total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
 	Contracted jc;
 	jc.v = plain;
 	jc.points = pr.status == "Optimal" ? pr.points : b.last.points;
@@ -7692,6 +7692,7 @@ TEST_CASE("planar slots: stage B from the pinned T1 stage A drawing: lazy rounds
 
 TEST_CASE("planar slots: T1's stage B drawing from the pinned stage A is accepted by the judge and the domain", "[junction][contraction][!shouldfail]")
 {
+	/* Superseded by the pipeline pin below ("stage B and the polish from the pinned T1 stage A drawing ..."); kept as the evidence (it pins a drawing, not the pipeline). */
 	const JunctionSpec spec = MakeTestJunctionSpec();
 	std::string error, why;
 	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
@@ -7774,6 +7775,121 @@ TEST_CASE("planar slots: T1's stage B drawing from the pinned stage A is accepte
 	for (const PlanarDomainBreak &br : d.breaks) breaks += " [" + br.rule + " " + br.why + "]";
 	INFO("domain breaks:" << breaks);
 	CHECK(d.legal);
+}
+
+TEST_CASE("planar slots: stage B and the polish from the pinned T1 stage A drawing are accepted by the judge and the domain", "[junction][contraction]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(1), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	std::map<std::string, std::vector<int>> heads;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t1-stagea-rules.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+
+	std::ostringstream out, md;
+	std::vector<Points> final_points;
+	REQUIRE(StageBToDomain(*cv, "PIN T1", md, out, [] {}, final_points));
+	INFO(out.str());
+	CHECK(out.str().find("polish: Optimal") != std::string::npos);
+	CHECK(out.str().find("judge accept") != std::string::npos);
+	CHECK(out.str().find("; domain accept") != std::string::npos);
+}
+
+TEST_CASE("planar slots: stage B and the polish from the pinned T2 stage A drawing are accepted by the judge and the domain", "[junction][contraction][!shouldfail]")
+{
+	const JunctionSpec spec = MakeTestJunctionSpec();
+	std::string error, why;
+	const PlanarTopology topology = ParsePlanarTopology(PlanarTText(2), &error);
+	REQUIRE(error.empty());
+	const PlanarStructureResult sr = BuildPlanarStructure(topology, spec, 1);
+	REQUIRE(!sr.variants.empty());
+	PlanarShapeVariant base;
+	REQUIRE(ShapePlanarStructureVariant(sr.variants[0], base, why));
+	for (PlanarShapeTrack &track : base.tracks) {
+		std::vector<uint32_t> middles = track.flex;
+		std::ranges::sort(middles);
+		for (size_t j = middles.size(); j-- > 0;) {
+			const uint32_t m = middles[j];
+			track.pieces.erase(track.pieces.begin() + m, track.pieces.begin() + m + 2);
+			for (uint32_t &e : track.event_piece) {
+				if (e > m) e -= 2;
+			}
+		}
+		track.flex.clear();
+	}
+	PlanarShapeVariant v = base;
+	REQUIRE(PlacePlanarShapeFlex(v, why, true, false, 1));
+	X1Fixture fa(v);
+	Geometry g;
+	std::map<std::string, std::vector<int>> heads;
+	{
+		std::ifstream in(std::string(JUNCTION_TOPOLOGY_DIR) + "/t2-stagea-rules.drawing.txt");
+		REQUIRE(in.good());
+		std::string word, track_name;
+		while (in >> word) {
+			REQUIRE(word == "track");
+			int x, y;
+			in >> track_name >> x >> y;
+			fa.starts[track_name] = {x, y};
+			std::string rest;
+			std::getline(in, rest);
+			std::istringstream lens(rest);
+			uint32_t k = 0;
+			for (int len; lens >> len; k++) g[track_name][k] = len;
+		}
+		for (uint32_t t = 0; t < fa.n; t++) heads[fa.Name(t)] = v.tracks[t].pieces;
+		fa.SetUp(heads, g);
+	}
+	const std::optional<Contracted> cv = ContractedVariant(fa, g);
+	REQUIRE(cv.has_value());
+
+	std::ostringstream out, md;
+	std::vector<Points> final_points;
+	const bool ran = StageBToDomain(*cv, "PIN T2", md, out, [] {}, final_points);
+	INFO(out.str());
+	REQUIRE(ran);
+	CHECK(out.str().find("polish: Optimal") != std::string::npos);
+	CHECK(out.str().find("judge accept") != std::string::npos);
+	CHECK(out.str().find("; domain accept") != std::string::npos);
 }
 
 TEST_CASE("planar slots: S-bends of legal T1 and T2 drawings by role (recon)", "[.][recont2sbends]")
