@@ -7472,6 +7472,8 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		const std::vector<std::vector<double>> ref_along = AlongFrom(plain_cv);
 		PlanarDrawOptions sb, listing;
 		StageBOptions(fb, *cv, ref_port_zero, ref_along, sb, listing);
+		const bool b_curves = std::getenv("PLANAR_STAGEB_CURVES") != nullptr;
+		if (b_curves) sb.curves = sb.bays = true;
 		const PlanarDrawResult lr = CheckPlanarDrawable(plain, 15.0, listing);
 		out << std::format("- {} stage B listing solve (no rows): {} {} ms\n", tag, lr.status, static_cast<int>(lr.ms));
 		flush();
@@ -7481,7 +7483,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 		}
 		md << std::format("\n| stage | round | status | ms | pairs fixed | pairs free | binaries | failing pairs | freed |\n|---|---|---|---|---|---|---|---|---|\n") << std::flush;
 		const LazyRun b = LazyLoop(plain, sb, {}, tag, "B", md, false, true);
-		out << std::format("- {} stage B: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
+		out << std::format("- {} stage B{}: rounds {} converged {} stop '{}' pairs with rows {} of {} total ms {}\n", tag, b_curves ? " curves+bays" : "", b.rounds, b.converged, b.stop, b.list.size(), b.all_pairs, static_cast<int>(b.ms));
 		if (!b.converged) {
 			flush();
 			continue;
@@ -7505,7 +7507,7 @@ TEST_CASE("planar slots: stage B from ContractedVariant of stage A on T1 and T2 
 			}
 			return sum;
 		};
-		out << std::format("- {} polish: {} {} ms length before {} after {}\n", tag, pr.status, static_cast<int>(pr.ms), total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
+		out << std::format("- {} polish{}: {} {} ms length before {} after {}\n", tag, b_curves ? " curves+bays" : "", pr.status, static_cast<int>(pr.ms), total(b.last.lengths), pr.status == "Optimal" ? std::format("{}", total(pr.lengths)) : "-");
 		Contracted jc;
 		jc.v = plain;
 		jc.points = pr.status == "Optimal" ? pr.points : b.last.points;
