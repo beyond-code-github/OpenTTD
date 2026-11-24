@@ -1157,12 +1157,57 @@ std::optional<Contracted> ContractedVariant(const X1Fixture &f, const Geometry &
 		/* When the two original pieces do not meet in one point (a crossing moved off its pieces on purpose), the first same-heading pair that touches is taken. */
 		const bool has_point = SegmentsMeetInOnePoint(a0, a1, b0, b1);
 		const std::array<double, 2> at = has_point ? MeetingPoint(a0, a1, b0, b1) : std::array<double, 2>{0, 0};
+		/* The structure holding the crossing names the separator; the other track is the crosser (none: only the zero distance is accepted). */
+		int sep_side = -1;
+		for (const PlanarStructure &st : f.v.structure.structures) {
+			if (std::ranges::find(st.crossings, c) == st.crossings.end()) continue;
+			if (st.separator == t[0]) sep_side = 0;
+			if (st.separator == t[1]) sep_side = 1;
+			break;
+		}
+		/* Whether the crosser's contracted track runs from the touch point `from` (on its piece `at_piece`) to the original point entirely on the separator piece's line, forward or backward; zero distance counts. */
+		const auto on_line_to_point = [&](const std::array<double, 2> &from, size_t sep_piece, size_t at_piece) {
+			if (std::abs(from[0] - at[0]) < 1e-9 && std::abs(from[1] - at[1]) < 1e-9) return true;
+			if (sep_side < 0) return false;
+			const uint32_t sep = t[sep_side], cr = t[1 - sep_side];
+			const Point &s0 = raw[sep][sep_piece];
+			const int *step = STEPS[head_of(sep, sep_piece)];
+			const auto on_line = [&](const std::array<double, 2> &p) {
+				return std::abs(step[1] * (p[0] - s0[0]) - step[0] * (p[1] - s0[1])) < 1e-9;
+			};
+			for (const bool forward : {true, false}) {
+				std::array<double, 2> cur = from;
+				bool ok = true;
+				for (size_t k = at_piece;; forward ? k++ : k--) {
+					const Point &pa = raw[cr][k], &pb = raw[cr][k + 1];
+					const bool holds = PointOnSegment(at, pa, pb);
+					const std::array<double, 2> to = holds ? at : forward ? std::array<double, 2>{static_cast<double>(pb[0]), static_cast<double>(pb[1])} : std::array<double, 2>{static_cast<double>(pa[0]), static_cast<double>(pa[1])};
+					if (!on_line(cur) || !on_line(to)) {
+						ok = false;
+						break;
+					}
+					if (holds) break;
+					cur = to;
+					if (forward ? k + 1 >= out.v.tracks[cr].pieces.size() : k == 0) {
+						ok = false;
+						break;
+					}
+				}
+				if (ok) return true;
+			}
+			return false;
+		};
 		bool found = false;
 		for (size_t i = 0; i < out.v.tracks[t[0]].pieces.size() && !found; i++) {
-			if (head_of(t[0], i) != heading[0] || (has_point && !PointOnSegment(at, raw[t[0]][i], raw[t[0]][i + 1]))) continue;
+			if (head_of(t[0], i) != heading[0]) continue;
 			for (size_t j = 0; j < out.v.tracks[t[1]].pieces.size() && !found; j++) {
-				if (head_of(t[1], j) != heading[1] || (has_point && !PointOnSegment(at, raw[t[1]][j], raw[t[1]][j + 1]))) continue;
+				if (head_of(t[1], j) != heading[1]) continue;
 				if (!SegmentsMeetInOnePoint(raw[t[0]][i], raw[t[0]][i + 1], raw[t[1]][j], raw[t[1]][j + 1])) continue;
+				if (has_point) {
+					const std::array<double, 2> touch = MeetingPoint(raw[t[0]][i], raw[t[0]][i + 1], raw[t[1]][j], raw[t[1]][j + 1]);
+					const size_t sep_piece = sep_side == 0 ? i : j, at_piece = sep_side == 0 ? j : i;
+					if (!on_line_to_point(touch, sep_piece, sep_side < 0 ? 0 : at_piece)) continue;
+				}
 				out.v.tracks[t[0]].event_piece[pos[0]] = static_cast<uint32_t>(i);
 				out.v.tracks[t[1]].event_piece[pos[1]] = static_cast<uint32_t>(j);
 				found = true;
