@@ -34,3 +34,10 @@ Write it to `docs/junction-tool/wip/probes/d449/p2.md` (at most 80 lines).
 
 ## 6. Report
 References read; commits; the per-hub numbers of part 3 (a compact table); the sign convention check; stops; `git status --porcelain`, `git log -1`. When you have reported, stop.
+
+## Run 2: P2b, slots PLUS v1's gap steps (2026-11-25, after P2: slots alone leave stage A Infeasible on T1/T2/T3; port rows in every conflict; T1 slot objective 0 while CP-SAT needs 8 inserts, 3 at ports)
+- Start from wt-c2 HEAD (79e401d99b probe + 036b203084 numbers). Keep the P2 mapping as is.
+- Add v1's gap steps: call `BuildPlanarGapSteps` (planar_gaps.h; read `src/junction/planar/CLAUDE.md` "Gap steps") with the same rebuilt inputs, and, if the D449 knob is set, also `PlanarCandidateSteps` (candidate straight-channel steps: v1 makes each a variant bit; here: report them, do NOT lock them, they stay free, and say how many there are). Each gap step (fan or close-up of a channel, `toward`) becomes one locked insert per lane of that channel in the stretch next to its port (fan: after the in port, before the fray; close-up: after the join, before the out port), direction from `toward` (same sign convention as P2). Every other insert stays held at 0, except the candidate-step inserts (free).
+- Then exactly as P2: HiGHS stage A on the locked set (15 s), the pipeline to judge/domain, and the same comparison table against the CP-SAT min-length runs already in `docs/junction-tool/wip/probes/d449/p2.md` (do not rerun CP-SAT).
+- If stage A is still Infeasible: the conflict families as before, and which locked inserts (slot or gap) are in it; plus ONE run with every insert free except the gap-step inserts forced on (HiGHS 15 s) to separate "gap steps wrong" from "more S-bends needed".
+- Append the results to p2.md (section "P2b"). Commit `Add: Junction: D449 P2b, gap steps in the slot lock` and `Doc: Junction: D449 P2b numbers`.
