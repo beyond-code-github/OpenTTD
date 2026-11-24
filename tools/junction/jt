@@ -51,7 +51,8 @@ rc=$?
 cat "$logdir"/*.log > "$log" 2>/dev/null
 cases=$(wc -l < "$logdir/names"); failed=$( [ -s "$logdir/failed" ] && wc -l < "$logdir/failed" || echo 0)
 [ "$cases" = 0 ] && echo "No tests ran" >> "$log"
-echo "test cases: $cases | $((cases - failed)) passed | $failed failed (parallel, $jobs jobs)" >> "$log"
+ran=$(find "$logdir" -name '[0-9]*.log' | wc -l)
+echo "test cases: $cases | $((ran - failed)) passed | $failed failed | $((cases - ran)) not run (parallel, $jobs jobs)" >> "$log"
 ms=$(( ($(date +%s%N) - start) / 1000000 ))
 grep -E '^[0-9]+\.[0-9]+ s: ' "$log" | awk -F' s: ' '$1 >= 1.0' | sort -rn | head -10 | sed 's/^/  slow test: /'
 grep -E '(^|: )FAILED|error:' "$log" | head -20
