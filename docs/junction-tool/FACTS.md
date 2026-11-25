@@ -45,6 +45,8 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 - **K3** [corpus] The expert hub fits inside our rules: V's 197 keeps every bay and curve row (86 and 430). *Source:* planar CLAUDE.md (drawing program).
 - **K4** [corpus] Expert hubs exist for many topologies: 252 PSG saves (178 load); one extracted so far (197). *Source:* corpus-growth memory.
 
+- **K5** [measured] T2 has a domain-legal drawing with every prio row exactly its coverage long in a 58 x 41.5 tile box (2407 tiles²); B's T2 was 94 x 29 (2726). Without coverage, the same choices fit 42 x 26.5, so prio coverage is a large part of T2's size. *Source:* ng2 adeb65f2c3, wip/probes/sizing/step1.md. Bounding box, not the outline area of K1.
+
 ## Scale
 - **N1** [derived] Tracks per hub: T2 32, T3 54, LL2 57. PSG 197 has 122 crossings. *Source:* ng2 wip/probes/sizing/counts.md.
 - **N2** [derived T2, T3] Pairs of tracks bounding a common face: T2 about 1700, T3 about 3200, LL2 about 3600. Only a small share are close enough to bind in a drawing: about 155 of 957 on T2's legal drawing, after zero-length pieces are merged away. *Source:* ng2 adb83d02d6.
@@ -57,6 +59,7 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 - **M4** Writing every face pair's clearance choice up front, with big-M rows, does not converge on T2 (N2). *Evidence:* D381 -> D444. Lazy whole-hub loops take 22-26 rounds of 10-36 s. *Evidence:* IDEAS §3.
 - **M5** Local questions (one pair, one span, one face) are decided in about a second by CP-SAT. *Evidence:* IDEAS §3.
 - **M6** Shortcuts that fix clearance directions from the face shape are exact only for anti-parallel facing walls (33 of 33 on T2's legal drawing, but only 4-33 pairs per hub). The `inward` shortcut is not exact: 155 pairs of T2's legal drawing break it (T3). *Evidence:* ng2 adb83d02d6.
+- **M8** With every clearance direction and bend fixed from a legal drawing, T2's lengths solve in 0.15-0.3 s (HiGHS, no binaries) and the result is domain-legal. Choices frozen from a stretched drawing (68 x 50.5) still allow 58 x 41.5 with coverage, so most of the stretch came from the feasibility-only objective, not from the choices. Whether freeing the choices compacts it further is open (Q2). *Evidence:* ng2 adeb65f2c3.
 - **M7** Convex cells (D431) and sides read from earlier drawings (D418) are retired.
 
 ## Open
