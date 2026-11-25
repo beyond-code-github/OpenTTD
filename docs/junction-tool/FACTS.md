@@ -67,6 +67,19 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 - **M10** The drawing program is exact only with the bends fixed (contracted). With bends as free inserts (uncontracted), its rows are not exact: even with the legal drawing's own bends committed, the result has 37 domain breaks (grid, node) and 2 routes below speed. With every bend free, T2 shrinks to 52 x 35, but it is illegal: 41 breaks, 8 routes below speed (lowest 61). Committing those bends with their curve rows is Infeasible. *Evidence:* ng2 wip/probes/sizing/bends.md. *So:* the rows switched by bend existence (grid parity, curve spacing, node, footprint; R3) don't exist yet. Choosing bends without them and adding them afterwards fails (as M2).
 - **M7** Convex cells (D431) and sides read from earlier drawings (D418) are retired.
 
+- **M11** [outside view, 2026-11-26] The recurring cost of the solver-row approach is translating tile rules into rows: every rule needs an exact encoding plus special cases (zero-length pieces, bends that may not exist, grid parity, curves), and each gap found adds model size (span, footprint, along, vertex, curves, switched rules; M10). Industrial fixed-topology routing (PCB/VLSI: PathFinder negotiated rip-up-and-reroute; rubber-band and topological routing; KiCad's push-and-shove) keeps the topology fixed and works on the grid, with the rules checked natively. Mapped to us:
+  - Structure and Shape fix the topology;
+  - tracks route on tiles with a state-space A* (state: position, heading and the bends inside the train-length window, so curve speed (G3) holds by construction);
+  - compaction is moves that keep every tile legal, checked by the domain.
+
+  The engineer asked to keep this in view (2026-11-26). Known hard parts:
+  - bridges are multi-tile anchors (B1), so structures should be placed or negotiated first;
+  - exact couplings (B5 copies equal and one tile apart, L2 prio rows one lane beside and coverage long, sibling lanes one lane apart) make single-track moves lock. Compaction needs group moves per bundle (a bundle is a PCB differential pair) and per structure (deck plus crossers).
+
+  A tile router does not change headings, so on its own it cannot remove a size that comes from Shape (M12).
+- **M12** [paper test, T2's legal drawing] T2's stretch comes from its headings: E1 runs diagonally from the W port at (16, 1) to (58, 43), and B's doubled copies run diagonally from (49, 46) to (15, 12). No length engine can shorten those diagonals while the headings stay fixed. B's T2 (94 x 29) is much flatter. *Evidence:* ng2 tools/junction/topologies/t2-p6cf.drawing.txt. *So:* compactness is decided upstream too (Shape's headings and Structure's variant), not only by lengths. C's variant matching B's choices ranks 1760th in Structure's ranking (IDEAS §3).
+
 ## Open
+- **Q3** How much of T2's size is set upstream (Structure variant and Shape headings) rather than by lengths? Probe: compare B's T2 headings with C's on the matched variant, then size B's choices in C's exact program.
 - **Q1** Can a clearance direction be fixed exactly from T2/T3 facts for more pairs (`walk`, `walk_strict`: exact or not on T2's legal drawing)?
 - **Q2** Does one solve deciding bends, clearance directions and lengths together (native CP, no big-M) give a compact legal T2/T3/LL2 in under 5 s? Abandon criterion and fallback: IDEAS §8.
