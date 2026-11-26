@@ -46,6 +46,17 @@ The pushes, as seen in this example:
 - **step aside**: a track moves sideways out of the way;
 - **along the line**: a length rule (prio coverage, D108; bays) moves a node along its line, and the tracks attached to that node stretch.
 
+## 4c. Worked example 2: L_R four-way, no balancing (engineer, rig, sign 'P2 Step 1' at (19, 23); built in place)
+1. One main line (W-E, row 26) and its first turn: split, short diagonal, south.
+2. The second main line (N-S) added; the W-E line rises over it as a doubled bridge (rows 25-26, x 15-17); further south the N-S line rises (doubled, staggered, x 18-19, rows 30-34) over a turn joining the W-E line.
+3. A new turn leaves the W-E line at (11, 25) and runs south down x 15; the N-S line rises again (x 16-17, rows 32-36). Everything stays in one cluster (about x 11-21, y 21-42).
+
+Engineer: "I made it work but it's not great. The line coming from the NE should have made its right turn before crossing the core rather than after." The split after the crossing made the turn cross the other line's lanes again: one extra doubled structure.
+Lessons:
+- The push rules held again: turns leave close together, straight lines rise over them locally, one cluster.
+- On a 4-way both main lines rise, each where turns pass under it.
+- Quality depends on Structure's event order: split before crossing the core ("split early, merge late, cross in the core", D24). That choice is length-free and belongs to Structure; the physics cannot repair a bad order (as M13 for the variant). To verify: does Structure order a turning split before the core's crossings today?
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
