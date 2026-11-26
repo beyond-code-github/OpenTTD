@@ -39,7 +39,12 @@ Lessons for the physics:
 - Elements go close to where they connect; crossings resolve locally (rise, or step aside) in one tight cluster where the turns leave the main line.
 - The second main line comes last and rises over the cluster in one doubled structure.
 - Greedy insertion that fixes each element where it first fits spreads everything outward (the orchestrator's attempt); nothing should be fixed once placed.
-Step 4 (prios) pending.
+Step 4, prios (the engineer edited step 3 in place): each prio row sits right beside its main line on the side away from the joiners, which is the outer side, so it takes no room from the crossing cluster and pushes nothing sideways. Its cost is along the line: the full coverage must fit upstream of the merge with no split or bridge inside (D108). Engineer, on what gives way: "in both cases the splits push back down the line". So a prio push is along the line, and the upstream splits move back; elastic branches absorb the change.
+
+The pushes, as seen in this example:
+- **rise**: a track heading straight lifts over a crossing (a bridge; a full-share main line as a doubled bridge);
+- **step aside**: a track moves sideways out of the way;
+- **along the line**: a length rule (prio coverage, D108; bays) moves a node along its line, and the tracks attached to that node stretch.
 
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
