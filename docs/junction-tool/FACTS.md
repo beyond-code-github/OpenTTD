@@ -99,6 +99,8 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 
   *Evidence:* ng2 cb65ff24d2, b852e7bc68 (wip/probes/length/search1.csv, search1.md, t1-search1-best.json, built in the rig at (75, 4)). *So:* the builder's placement can reach expert size on T1. Version 1's sprawl came from its fixed choices, mainly the far provisional port edge and always taking the first candidate. A good build is rare (about 1 in 100), so the choices it shares are what to turn into rules.
 
+- **M19** [measured] The old rule checker's 11 families now run on a drawn hub: ports come from the hub, and slots come from the same code that builds the checker topology. On the builder's default T1 and on the search's best (19 x 11), every family that applies before signals finds nothing: connectivity (including doubled lanes of equal length), geometry, order, curve speed, bridges, footprint and prio. Signals, waiting room and deadlock complain only about missing signals; the hubs are unsignalled. So the search's 11-tile, unbalanced bridge pair passes every rule we have. Bridge length beyond the game's maximum and the balance of parallel bridges are checked nowhere (FACTS B3, B5). *Evidence:* ng2 64b1089f65, e8024bc40e (wip/probes/length/rules1.md). The engineer's rig hub was not judged: its hub.json ports do not line up with the T1 topology.
+
 ## Open
 - **Q3** Does the matched variant (o4t3f1m120) draw legal and compact in C's exact program (bends fixed, every rule on), near B's 94 x 29? That needs a first legal drawing of that variant.
 - **Q1** Can a clearance direction be fixed exactly from T2/T3 facts for more pairs (`walk`, `walk_strict`: exact or not on T2's legal drawing)?
