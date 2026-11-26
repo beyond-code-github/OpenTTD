@@ -10,11 +10,7 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
   - **The greedy builder cannot build T1 under the plan** (M21: 0 of 50 seeds). Lookahead and backtracking are needed for the build to exist at all. The T1-build tests are pinned `[!shouldfail]`.
   - **The plan** (D468, D469): every Structure variant is a hub, and the length layer seeks each variant's optimum. Offline enumeration prunes the variants, and the near-optimal ones become the tool's options (user choice or random). Generic opinions (§9.4) carry this to hubs too big to enumerate, up to LLLL_RRRR. Human hubs are a floor, not the target (memory: emergent hubs).
   - **Next, in order** (§9.5):
-    1. **Prio rows** (step 3, first thing 2026-11-27):
-       - Declare `prio E1, B1` in the rig T1 topology (D470: prios are always declared).
-       - Add the engineer's prio rows to the answer key. He rebuilds them in the rig on his T1 at (50, 4), or they are extracted from his "PS - Step 3" build in his save (`~/.cache/ottd-rig/rig-restore.sav`), which had prios.
-       - The builder lays rows exactly coverage long.
-       - With prios declared, the pinned P6 line on L8 should go away.
+    1. **Prio rows** (step 3; 2026-11-27): his rows are already in the rig T1 (FACTS M22); E1's spans its doubled bridge in two pieces, legal (D471). Split 3a/3b/3c in DESIGN §9.5. **3a running** (ng2, BRIEF-length-prio1, Sonnet, launched on a9aeddaa43): the extractor writes `prio:B1`, `prio:E1a`, `prio:E1b` into rigt1 `hub.json`. Then 3b (Structure rows per D471), 3c (judge coverage and D108, topology `prio B1, E1`, builder rows).
     2. **The exact T1 optimum spike** (CP-SAT, §9.2). It needs no greedy order, so it shows whether T1 is solvable under the plan and what the best answer is.
     3. **The T1 variant study.**
     4. **The four-way, then the scalable search** (gap reservation with local backtracking, or negotiated routing).
