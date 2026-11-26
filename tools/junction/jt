@@ -40,6 +40,8 @@ fi
 start=$(date +%s%N)
 # Each test case runs in its own process, JT_JOBS at a time (default half the cores): the wall time is about the slowest case, not the sum.
 jobs=${JT_JOBS:-$(( $(nproc) / 2 ))}
+# Logs of other tags older than a day go (they are never read again).
+find "$build" -maxdepth 1 -name 'jt-*' -mtime +1 -exec rm -rf {} + 2>/dev/null
 logdir="$build/jt-$name.d"; rm -rf "$logdir"; mkdir -p "$logdir"
 "$build/openttd_test" "$filter" --list-test-names-only 2>/dev/null | sed '/^$/d' > "$logdir/names"
 # Catch2 test specs treat \ , [ ] " as special: escape them so each name matches only itself.
