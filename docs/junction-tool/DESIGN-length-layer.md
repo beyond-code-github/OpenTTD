@@ -201,6 +201,14 @@ Each variant is a vector of these choices. A study reports, per choice, the area
 5. **Variant enumeration on T1:** the exact optimum per variant if step 4 holds, else the builder. Report it in the §9.4 vocabulary.
 6. **The same on the L_R four-way,** then a decision on the scalable search (gap reservation with local backtracking, or negotiated routing, §M11), designed against the study's findings.
 
+### 9.7 Negotiation (D478)
+The builder's main loop becomes rip-up and reroute over a dependency graph (PathFinder, M11), replacing chronological backtracking (M27-M29).
+- **Elements:** chains (and later prio rows and structures). An element depends on the elements its node ends attach to (a row on its lane, a crosser's passage on its structure). Ripping up an element rips up its dependents; they re-enter the queue.
+- **Soft router:** in soft mode the router may take tiles that other tracks make illegal (a shared tile, an unlisted crossing, a crossing from the wrong side or out of order), at a cost per tile times the tile's history. It returns the tracks it violated, so blame comes from the router itself.
+- **The loop:** take the next queued element. Route it hard. If that fails, route it soft. A soft route with no conflicts is the hard answer. Otherwise the element is placed, its conflicting elements and their dependents are ripped up and queued, and every contested tile's history rises. Reservations (a structure's whole span, a prio's coverage section and row, D476) are elements too, placed with their owner, so "reserve the space and reroute the current line" is the same move.
+- **Convergence, no loops (D477):** history costs make repeated fights dearer, so the negotiation settles. An iteration cap and the state signatures are hard stops. The order of the queue is today's `Sequence()`; ripped-up elements go to its front.
+- **Steps:** N1, the soft router (`soft_cost`, `history`, `conflicts`), tested on small hand hubs. N2, the negotiation loop over chains, with outer tests T1 and PortBridge. N3, prio rows and structure spans as reserved elements (prio3 resumes here; bent prios, D475).
+
 ### 9.6 Open (for the engineer)
 - Whether step 3's model is tractable. The curve windows are the risk.
 - Whether the four-way has few enough variants to enumerate in full.
