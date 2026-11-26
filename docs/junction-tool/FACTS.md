@@ -91,6 +91,14 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 
 - **M17** [measured] The new builder (insertion in the engineer's order, the groove router with rises, bays kept by construction, port stubs as rays) builds the engineer's own T1 topology legally in 0.12 s: domain, curve speed and bays all clean, with no pushes. It is not compact: 29 x 50 tiles against his about 17 x 11. *Evidence:* ng2 91db008772, 0469d87eb6 (rig layout t1-build1.json, built at (37, 66)). *So:* legality and speed are solved by construction; compactness is the open problem (provisional port edges far out, no re-settle, no length polish yet).
 
+- **M18** [measured] Search over the builder's own choices reaches the engineer's T1 size. 400 seeded T1 builds in 114 s (about 0.3 s each). Each draw varied the provisional port margin, the ring direction, the ring start, which track rises at a both-straight crossing, and the chance of skipping a legal candidate. 139 builds were legal (judge empty). The best is 19 x 11 = 209 tiles², domain-, curve- and bay-legal, against his about 17 x 11 (K6 measured about 20 x 11). The median legal build is 640 tiles². Median legal area per option value:
+  - port margin: 4 gives 640, 8 gives 441, 12 gives 282, 16 gives 300, 24 gives 550, 40 (the version-1 default) gives 902;
+  - skip: 0 gives 902, 0.3 gives 575;
+  - the existing track rises on a tie: 552, against 724 when the new track rises;
+  - ring direction and ring start barely matter.
+
+  *Evidence:* ng2 cb65ff24d2, b852e7bc68 (wip/probes/length/search1.csv, search1.md, t1-search1-best.json, built in the rig at (75, 4)). *So:* the builder's placement can reach expert size on T1. Version 1's sprawl came from its fixed choices, mainly the far provisional port edge and always taking the first candidate. A good build is rare (about 1 in 100), so the choices it shares are what to turn into rules.
+
 ## Open
 - **Q3** Does the matched variant (o4t3f1m120) draw legal and compact in C's exact program (bends fixed, every rule on), near B's 94 x 29? That needs a first legal drawing of that variant.
 - **Q1** Can a clearance direction be fixed exactly from T2/T3 facts for more pairs (`walk`, `walk_strict`: exact or not on T2's legal drawing)?
