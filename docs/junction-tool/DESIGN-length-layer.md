@@ -67,6 +67,7 @@ Lessons:
 2. Then the straight lines, rising over the cluster where they meet it (one structure each, doubled when full share).
 3. Then the other turns (left turns in left-hand drive), which cross nothing.
 4. Prio rows (on the outer side) and bays last: they push along the line.
+Order among the crossing turns (engineer): "There's always symmetry to these types of hub, either radial or regular so I'm guessing right turns can go in any order, but probably either clockwise or anticlockwise. Can't say for sure though". Default: round the hub in one direction; measure clockwise against anticlockwise in the first probe. Symmetry (radial or mirror) is also a lever: one sector settled can seed the others (DESIGN-tracks §14).
 (The draft before this correction put the main lines first; the engineer's builds show a main line only as the anchor a right turn leaves from.)
 **Pushes (each legal):** rise (a bridge), step aside (sideways), along the line (a node moves along its line, attached tracks stretch). A push takes the smallest legal amount, moves the softest element involved, in the direction away from the core given by the planar sides.
 **Re-settle after every insertion:** every element moves inward (towards the cluster) while it stays legal; nothing is fixed once placed (the orchestrator's greedy T1 lacked this and spread outward).
