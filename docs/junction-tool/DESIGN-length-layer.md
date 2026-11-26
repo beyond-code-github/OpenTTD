@@ -82,6 +82,17 @@ Outside-in, each step a brief:
 4. **Insertion for T1** in the 4d order (crossing turns round the hub, then straight lines rising, then other turns, then prios and bays), with the three pushes and a re-settle; compared with the engineer's T1, clockwise against anticlockwise.
 5. The L_R four-way, against the engineer's example 2 (with its turn-before-core fixed by D286).
 
+## 4f. The groove: routing one track on tiles (design for step 3)
+**Input:** the hub so far (a `PlanarDrawnHub`, legal), a start (a point on a tile-edge midpoint with the heading the rules force there: a node leg one eighth off its trunk, D404, or a port's heading) and a goal (a port side with the positions its port spacing allows, D313, or a merge point with its leg heading).
+**State:** (point, heading, the bends inside the train-length window: their travel position and direction). A move lays one piece (one step to the next tile-edge midpoint) at the current heading or one eighth either way (a 45-degree bend).
+**A move is allowed only if it keeps the hub legal locally:**
+- the new piece shares a tile only as the game allows without a switch (the two halves of a diagonal pair: Upper with Lower, Left with Right); never an X|Y diamond, never a bridge head tile;
+- curve speed by construction: consecutive bends at least `curve_same` (same direction) or `curve_opposite` (opposite) apart, and the window counts (`curve_window`), the drawing program's curve rules (D420, which hold on V's PSG 197); the full game check (`JudgePlanarDrawnHub`) confirms the finished route;
+- crossing an existing track only by a rise: (a) pass under an existing bridge's middles; (b) the existing track rises: it is straight on an axis there, with room for a head on each side clear of switches; it becomes a bridge over the new track (doubled when it is a full-share line's copy pair); (c) the new track rises: a macro-move laying head, middles over the crossed tracks, head, all on one axis. The default between (b) and (c): the track heading straight there rises (engineer).
+**Cost:** travel (half tiles), plus a cost per bend and per new structure (Structure counts structures, D371). A* with the octilinear distance to the goal as the estimate.
+**Output:** the track's points, and any structure it created or joined. The caller (the builder) checks the whole hub with `JudgePlanarDrawnHub` after inserting it.
+**First version leaves out:** pushes (if no route exists, the builder reports it), copies and prio rows (added by the builder, not routed freely).
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
