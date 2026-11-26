@@ -135,3 +135,55 @@ Use T2's existing legal drawing (`t2-p6cf`, 68 x 50.5) as the sparse start. It i
 ## 8. Settled (D463)
 - The objective is the outline area (K1).
 - Nodes move freely in compaction; their bays and coverage are judged by the legality function after each move.
+
+## 9. The plan after the reproduce test (draft 2026-11-26, for the engineer's review)
+**Where we stand.** The tile router is sound locally (FACTS M20): given the engineer's surroundings, it lays his track back, legal and as short. The one judge holds every rule (D465 to D467), and his rig T1 passes it apart from the known curve. What is missing is the search on top: lookahead (leave room for later tracks) and backtracking. On top of that, the builder uses only part of Structure (§9.1).
+
+**Principles.**
+- Hubs emerge from the rules (memory: emergent hubs). The judge defines legal, the outline area defines better (D463), and human hubs are a floor. Lookahead, ordering and backtracking are search machinery only; they never restrict the answer.
+- Every variant is a hub (D468), enumerated offline. The opinions come from which variants win, and they are written in generic terms so they carry from T1 to LLLL_RRRR and beyond (§9.4).
+
+### 9.1 The builder takes all of Structure, no Shape
+Today it reads the tracks, nodes and straight legs. It adds three length-free facts from the track map. Together they are the lookahead's raw material: they say, before any length, what must pass between what.
+1. **Crossings exactly as the map lists them.** A routed track crosses exactly the tracks its events list, in their listed order, arriving from the listed side (the D389 marks), and touches no other track. It never crosses a box edge except at its own port. On tiles this is homotopy routing: the track stays in its faces of the planar map, so it can no longer go round the back of a main line (the north loop in study 2).
+   - *Router change:* the state carries the index of its next event. A rise or crossing over a track that is not the next event is refused, and so is arrival from the wrong side.
+2. **Separators from the map.** At each crossing, the track that rises is Structure's separator, not "the straight one". Crossings in one structure share one bridge. This replaces the router's rise rule for map crossings.
+3. **Sides per stretch** follow from 1 for crossing tracks. For tracks that never cross (parallel neighbours), the map's side says which side of the other the track runs on. The router refuses a first piece on the wrong side.
+- *Also:* the router gets the curve window of the track it continues across a node (the bends before the node on that route), not none (L11 in M20).
+- *Check:* leave one out on the rig T1 stays identical (13 of 15 same points, all at his travel), and no T1 build of any seed crosses a track outside its list.
+
+### 9.2 The exact optimum per variant on small hubs (a spike)
+A CP-SAT model of T1 on tiles, offline. It decides every tile, under the same rules the judge checks, and minimises the outline area. It does not scale, and it does not need to. Its purpose is ground truth: the best T1 per variant, which may be one no person would draw, and the yardstick for every scalable method.
+- *Model sketch:* per track, a path in the router's state graph (point, heading, curve window), with arc binaries and flow conservation. Rises are macro arcs, as in the router. Every tile allows only the domain's legal piece combinations. Crossings follow §9.1. Each bay is a path-length row from its split. The box is a variable; minimise W x H by an outer loop over W.
+- *Spike plan:* first the engineer's variant of T1. Does it find a legal hub? Is it at or below 17 x 11? How long does it take? Time box: one session. Offline solves may take minutes, not the hover's 5 s.
+- *Every solution is confirmed by the one judge,* never by the model's own rows (memory: independent check).
+
+### 9.3 The variant study (D468)
+1. Enumerate every Structure variant of the hub (`BuildPlanarStructure` without `keep`).
+2. Give each one its best legal area: the exact optimum (§9.2) where it runs, the §9.1 builder with search where it does not, and both where both run, to calibrate the builder.
+3. Record per variant its decisions in the generic vocabulary (§9.4) and its area.
+4. Find the decisions shared by the best variants and missing from the worst.
+
+The ladder: T1 → L_R four-way → T2 (16 384 variants) → T3 → LL2 → PSG 197 → LLLL_RRRR. Each rung checks whether the previous rung's opinions still predict the winners.
+
+### 9.4 The generic vocabulary (so opinions transfer between hubs)
+Opinions are stated about kinds of decision, never about bit indices or line names. A first list, to grow from the studies:
+- **Crossing over:** prio over non-prio; full share over half; the line turning less over the line turning more; the line crossing more over the line crossing fewer.
+- **Straight leg at a tie site:** the leg turning less; the leg toward the hub's centre line; the leg with the longer run to its port.
+- **Triangle flip:** which pair of the three crosses first, named by the lines' roles (prio, turning, straight).
+- **Grouping:** crossings of one line sharing a bridge, against separate bridges.
+- **Mover separators (D372):** the joiner rises, or the main line does.
+
+Each variant is a vector of these choices. A study reports, per choice, the area distribution with and without it. An opinion is a choice whose presence reliably predicts a smaller area across hubs.
+
+### 9.5 Order of work (each step one brief, one fresh agent, checked against its brief)
+1. **Router:** the curve window across a node (§9.1, last bullet).
+2. **Router and builder:** crossings exactly as the map lists them, separators from the map, sides (§9.1 1-3).
+3. **Spike:** the exact T1 optimum on the engineer's variant (§9.2).
+4. **Variant enumeration on T1:** the exact optimum per variant if step 3 holds, else the builder. Report it in the §9.4 vocabulary.
+5. **The same on the L_R four-way,** then a decision on the scalable search (gap reservation with local backtracking, or negotiated routing, §M11), designed against the study's findings.
+
+### 9.6 Open (for the engineer)
+- Whether step 3's model is tractable. The curve windows are the risk.
+- Whether the four-way has few enough variants to enumerate in full.
+- Which human hubs to add as answer keys on the ladder.
