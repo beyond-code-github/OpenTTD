@@ -93,6 +93,18 @@ Outside-in, each step a brief:
 **Output:** the track's points, and any structure it created or joined. The caller (the builder) checks the whole hub with `JudgePlanarDrawnHub` after inserting it.
 **First version leaves out:** pushes (if no route exists, the builder reports it), copies and prio rows (added by the builder, not routed freely).
 
+## 4g. The builder, version 1 (design for step 4)
+**Input:** a topology and one Structure variant (track map, sites, structures, rule fields). For the first run: the engineer's own T1 topology as the extractor wrote it (`tools/junction/corpus/out/rigt1/topology.txt`), so the result compares one to one with his `hub.json` (same topology, left-hand drive). **Output:** a `PlanarDrawnHub` with track i = the track map's track i, judged legal by `JudgePlanarDrawnHub` after every step.
+**Phases (§4d order):**
+0. **Anchor:** the line the first crossing turn leaves (or joins), laid straight between provisional port points on its two sides.
+1. **Crossing turns, round the hub** (in ring order from the anchor's in port): each from a node on an existing line to its other end (a port side, or a merge on another existing line). Node placement: candidate points along the existing line, one tile apart, nearest the cluster first; the first candidate whose routed track leaves the hub legal is taken ("closest legal position"). A port end is a goal line (the side's provisional edge at the port's heading, any position along it).
+2. **Straight lines:** the remaining port-to-port lines, routed from side to side; where they meet the cluster they rise (the router's rule: the newer straight track rises).
+3. **The other turns** (crossing nothing), as phase 1.
+4. **Along-line pushes:** where the judge reports a short bay, the node at its start moves back along its line by one tile and the tracks attached to it are re-routed; repeat until legal.
+5. **Ports:** every port track is extended straight to the final box edge; port spacing (D313) is reported, not yet enforced.
+**Version 1 leaves out, and reports:** doubling (full-share lines over crossings are single bridges), prio rows and coverage, signals before bridge heads, re-settling (measured first: how far version 1 lands from the engineer's T1 tells us which to add).
+**Router extension needed:** a goal line (reach x = X or y = Y at a heading, any position along it), step 3c.
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
