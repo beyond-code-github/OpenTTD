@@ -180,7 +180,10 @@ Each variant is a vector of these choices. A study reports, per choice, the area
 ### 9.5 Order of work (each step one brief, one fresh agent, checked against its brief)
 1. **Router:** the curve window across a node (§9.1, last bullet).
 2. **Router and builder:** crossings exactly as the map lists them, separators from the map, sides (§9.1 1-3).
-3. **Prio rows (engineer, 2026-11-26: "We've got a teach it about them sooner or later though right?"):** declare `prio E1, B1` in the rig T1 (D470) and add his rows to the answer key. The builder lays each prio row beside its lane, exactly its coverage long (L2, D384), with its joins. Coverage is one of the three things that set T2's size (K5), so no variant study runs without it.
+3. **Prio rows (engineer, 2026-11-26: "We've got a teach it about them sooner or later though right?"):** declare `prio E1, B1` in the rig T1 (D470) and add his rows to the answer key. The builder lays each prio row beside its lane, exactly its coverage long (L2, D384), with its joins. Coverage is one of the three things that set T2's size (K5), so no variant study runs without it. His rows are already in the rig T1 (FACTS M22); E1's spans its doubled bridge in two pieces, which is legal (D471). Sub-steps, one brief each:
+   - **3a** (BRIEF-length-prio1): the extractor writes the rows into `hub.json` (Row tracks `prio:B1`, `prio:E1a`, `prio:E1b`: the beside run between the two joins) and marks the prio routes, from a `prio` column in `hubs.tsv`. The topology's `prio` line waits for 3c.
+   - **3b**: Structure's row expansion per D471: a row beside its lane back across the lane's own doubled bridge, in pieces, so the map's rows match the answer key's by name.
+   - **3c**: the judge measures coverage along the lane (bridge included, D471) and D108 with the D471 exemption; then `prio B1, E1` in the rig T1 topology and the builder lays each row piece exactly as long as its share of the coverage.
 4. **Spike:** the exact T1 optimum on the engineer's variant (§9.2).
 5. **Variant enumeration on T1:** the exact optimum per variant if step 4 holds, else the builder. Report it in the §9.4 vocabulary.
 6. **The same on the L_R four-way,** then a decision on the scalable search (gap reservation with local backtracking, or negotiated routing, §M11), designed against the study's findings.
