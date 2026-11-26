@@ -55,7 +55,22 @@ Engineer: "I made it work but it's not great. The line coming from the NE should
 Lessons:
 - The push rules held again: turns leave close together, straight lines rise over them locally, one cluster.
 - On a 4-way both main lines rise, each where turns pass under it.
-- Quality depends on Structure's event order: split before crossing the core ("split early, merge late, cross in the core", D24). That choice is length-free and belongs to Structure; the physics cannot repair a bad order (as M13 for the variant). To verify: does Structure order a turning split before the core's crossings today?
+- Quality depends on Structure's event order: split before crossing the core ("split early, merge late, cross in the core", D24). That choice is length-free and belongs to Structure; the physics cannot repair a bad order (as M13 for the variant). Already a rule for generated hubs: D286 ("split by direction early, cross in the core") and D24 (splits before merges); the engineer's hand build broke it, the tool would not.
+- No prios here: all lines are equal. Bays were not measured: they "would largely just push splits or merges down the line again" (the along-line push). Left turns not built: "pretty straightforward" (in left-hand drive they cross nothing).
+
+
+## 4d. The physics rules (draft v1, from worked examples T1 and the four-way; to be checked by hand on T2 before any code)
+**Inputs (from Structure, length-free):** the track map with its event order (splits early, D286), for each crossing who rises (Structure's separator; default: the track heading straight rises), flow shares (stiffness: full share is stiff), the coop rule fields.
+**Invariant:** the layout is legal after every step (D464): domain, curve speed, coop rules (bays, coverage, D108, signals before bridge heads).
+**Insertion order:**
+1. The stiffest line (a full-share main line), straight across.
+2. Its turns (the splits and merges on it), in event order along it, each at the closest legal position to where it connects, settled in its groove (the tightest legal curve).
+3. The next main line, as close as legal to what exists; where it meets existing tracks, the separator rises over them as one structure (doubled when full share).
+4. Its turns, as in 2. Repeat 3-4 for further main lines.
+5. Prio rows (on the outer side) and bays last: they push along the line.
+**Pushes (each legal):** rise (a bridge), step aside (sideways), along the line (a node moves along its line, attached tracks stretch). A push takes the smallest legal amount, moves the softest element involved, in the direction away from the core given by the planar sides.
+**Re-settle after every insertion:** every element moves inward (towards the cluster) while it stays legal; nothing is fixed once placed (the orchestrator's greedy T1 lacked this and spread outward).
+**Open:** how "closest legal position" is searched; what moves a re-settle may use (the compaction probes' cut shifts and rewrites, group moves per bundle and structure); termination; whether insertion order matters beyond 1-5.
 
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
