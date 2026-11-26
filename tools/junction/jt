@@ -44,8 +44,11 @@ logdir="$build/jt-$name.d"; rm -rf "$logdir"; mkdir -p "$logdir"
 "$build/openttd_test" "$filter" --list-test-names-only 2>/dev/null | sed '/^$/d' > "$logdir/names"
 # Catch2 test specs treat \ , [ ] " as special: escape them so each name matches only itself.
 sed -e 's/[][\\,"]/\\&/g' "$logdir/names" > "$logdir/specs"
-export build logdir
-timeout --signal=INT "$((budget + 1))" bash -c 'n=0; while IFS= read -r spec; do n=$((n + 1)); printf "%s\0%s\0" "$n" "$spec"; done < "$logdir/specs" | xargs -0 -n 2 -P '"$jobs"' sh -c '"'"'"$build/openttd_test" "$2" --durations yes > "$logdir/$1.log" 2>&1 || echo "$1" >> "$logdir/failed"'"'"' _'
+# Each case runs through jt-case: killed at the budget, its log capped at 1 MiB (a capped log fails).
+case_budget=$((budget + 1))
+case_runner="$(dirname "$0")/jt-case"
+export build logdir case_budget case_runner
+timeout --signal=INT "$((budget + 1))" bash -c 'n=0; while IFS= read -r spec; do n=$((n + 1)); printf "%s\0%s\0" "$n" "$spec"; done < "$logdir/specs" | xargs -0 -n 2 -P '"$jobs"' sh -c '"'"'"$case_runner" "$build/openttd_test" "$2" "$logdir/$1.log" "$case_budget" || echo "$1" >> "$logdir/failed"'"'"' _'
 rc=$?
 [ "$rc" = 0 ] && [ -s "$logdir/failed" ] && rc=1
 cat "$logdir"/*.log > "$log" 2>/dev/null
