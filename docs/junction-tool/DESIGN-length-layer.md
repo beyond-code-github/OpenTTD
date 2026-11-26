@@ -73,6 +73,14 @@ Order among the crossing turns (engineer): "There's always symmetry to these typ
 **Re-settle after every insertion:** every element moves inward (towards the cluster) while it stays legal; nothing is fixed once placed (the orchestrator's greedy T1 lacked this and spread outward).
 **Open:** how "closest legal position" is searched; what moves a re-settle may use (the compaction probes' cut shifts and rewrites, group moves per bundle and structure); termination; whether insertion order matters beyond 1-5.
 
+## 4e. Probe plan: T1 first, then the L_R four-way (the first real test; engineer)
+Outside-in, each step a brief:
+1. **Answer key and judge.** Extract the engineer's T1 from the rig (corpus extractor on a map export, as for PSG 197: topology, structure, shape, lengths, pins) and judge it with our checks (domain, game curve speed, coop rules). Pins the legality function on a real legal hub and exposes any check that disagrees with a hub the engineer built.
+2. **A legality function on tile layouts** that takes tracks as polylines plus nodes and structures directly (not via a Shape variant's pieces, which the compaction probes showed is too rigid once tracks change shape).
+3. **The groove: a tile router for one track** (state: tile-edge point, heading, the bends inside the train-length window), so the tightest legal path from an anchor to its port is found with curve speed holding by construction. Crossing an existing track only by a rise (the straight-heading track becomes a bridge).
+4. **Insertion for T1** in the 4d order (crossing turns round the hub, then straight lines rising, then other turns, then prios and bays), with the three pushes and a re-settle; compared with the engineer's T1, clockwise against anticlockwise.
+5. The L_R four-way, against the engineer's example 2 (with its turn-before-core fixed by D286).
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
