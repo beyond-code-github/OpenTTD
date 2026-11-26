@@ -38,6 +38,6 @@ Every rule we have is a tile rule or a rule along a path of tiles, and each is c
 ## 7. First probe (risk 1)
 Use T2's existing legal drawing (`t2-p6cf`, 68 x 50.5) as the sparse start. It is legal, stretched, and on variant 0. Build only the legality function on a tile layout and two moves (cut shift in x and y, with the diagonal rewrite at the cut). Run greedy compaction. Measure the area against 69 x 48.5 (rows, bends fixed) and the time. If cut shifts lock immediately, record where and why before adding moves.
 
-## 8. Open (for the engineer)
-- Does the outline area (K1) stay the objective, or the box first?
-- May compaction change a node's position along its trunk freely (it moves bays and coverage with it)?
+## 8. Settled (D463)
+- The objective is the outline area (K1).
+- Nodes move freely in compaction; their bays and coverage are judged by the legality function after each move.
