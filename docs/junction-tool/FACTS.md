@@ -89,6 +89,8 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 
 - **M16** [measured] Adding the diagonal rewrite (the shift passes a diagonal by giving it a one-tile axis piece) lets 3 cuts through: T2 goes from 68 x 50.5 to 65 x 50.5 tiles, legal, in 51 ms, and then locks. Rejections over 2 sweeps: diagonal too short at the cut 234, diagonal carrying a crossing 100, axis piece too short 36, domain 43, curve 40, bays or coverage 8. *Evidence:* ng2 fbb8fcf869, wip/probes/length/compact2.md. *So:* a straight cut through the whole hub must get a tile from every track it crosses at once, and almost always one of about 10 cannot give it. Local moves from a stretched start keep its structure (as M8 did with fixed bends): improving a bad drawing locally does not escape its shape.
 
+- **M17** [measured] The new builder (insertion in the engineer's order, the groove router with rises, bays kept by construction, port stubs as rays) builds the engineer's own T1 topology legally in 0.12 s: domain, curve speed and bays all clean, with no pushes. It is not compact: 29 x 50 tiles against his about 17 x 11. *Evidence:* ng2 91db008772, 0469d87eb6 (rig layout t1-build1.json, built at (37, 66)). *So:* legality and speed are solved by construction; compactness is the open problem (provisional port edges far out, no re-settle, no length polish yet).
+
 ## Open
 - **Q3** Does the matched variant (o4t3f1m120) draw legal and compact in C's exact program (bends fixed, every rule on), near B's 94 x 29? That needs a first legal drawing of that variant.
 - **Q1** Can a clearance direction be fixed exactly from T2/T3 facts for more pairs (`walk`, `walk_strict`: exact or not on T2's legal drawing)?
