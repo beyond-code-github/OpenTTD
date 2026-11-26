@@ -225,6 +225,13 @@ The builder's main loop becomes rip-up and reroute over a dependency graph (Path
 - **Bear in mind, not yet (engineer, 2026-11-27: "we're gonna need some kind of heuristic/branch and bound here aren't we to constrain the search space. Don't do it now, just bear it in mind"):** prune the candidates with bounds. A lower bound on the area (or cost) of any completion from a partial state drops a branch that cannot beat the best hub found; an ordering heuristic tries the likely winners first. Take it up when the measured search size calls for it, and compare with the parked CP-SAT engine (S-CP).
 - **Steps:** N1, the soft router (`soft_cost`, `history`, `conflicts`), tested on small hand hubs. N2a, the negotiation loop over whole chains (outer test T1). N2-tests, the seam and the pinned scenarios above. N2b, ripping up one stretch, if the measured cascades need it. N3, prio rows and structure spans as reserved elements (prio3 resumes here; bent prios, D475).
 
+### 9.8 The drag tool (engineer, 2026-11-27, not started)
+Engineer: "I'd like to be able to 'drag' nodes around in the actual UI and see the effects of the routing in real time. This would give us confidence in the 'push and pull' and elastic track aspects of things which we could then automate into the solve."
+- **The primitive is N2b's:** move node N to point p (a candidate along its trunk), then reroute the stretches attached to N between their fixed points: hard first, negotiation (stretch rip-up) only if blocked. The drag tool and the automated push are one primitive with two drivers.
+- **The UI** (in the fork's junction tool, `src/junction/tool/` ghost drawing): the built hub as a ghost; grab a split or merge and slide it along its trunk; each move calls the primitive and redraws; the judge's lines (bay, curve, D108) show as red tiles.
+- **Speed:** a hard route on T1 is about 50 ms, so a move that reroutes 2-3 stretches is 100-200 ms, interactive. Moves that need negotiation will lag, which is itself a measurement.
+- **Order:** after N2b (the primitive), before N3 (dragging prio joins with their rows tests D472-D476 directly). The GUI's design (what is grabbed, what is shown, when it reroutes) is settled with the engineer first.
+
 ### 9.6 Open (for the engineer)
 - Whether step 3's model is tractable. The curve windows are the risk.
 - Whether the four-way has few enough variants to enumerate in full.
