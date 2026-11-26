@@ -8,7 +8,9 @@ History lives in git. The previous STATUS: `git show d18117a214:docs/junction-to
   - **The tile router is sound locally** (M20). What is missing is lookahead and backtracking, and the builder uses only part of Structure.
   - **The plan** (D468, D469): every Structure variant is a hub, and the length layer seeks each variant's optimum. Offline enumeration prunes the variants; the near-optimal ones become the tool's options. Generic opinions (§9.4) scale this toward LLLL_RRRR.
   - **Order** (§9.5):
-    1. The curve window across a node (BRIEF-length-groove4, in flight).
+    1. Done: the curve window across a node (139c546ee9).
+    2. Done: crossings, separators and one-passage counting from the map (ee729acca7, 9342e4e4ee, 7a675e45ac, builder commit). The greedy builder now fails T1 under the plan (M21); its T1-build tests are pinned `[!shouldfail]`.
+    - NEXT (2026-11-27): prio rows (§9.5 step 3), then the exact T1 spike.
     2. Crossings, separators and sides from the map.
     3. An exact T1 optimum spike (CP-SAT).
     4. The T1 variant study.
