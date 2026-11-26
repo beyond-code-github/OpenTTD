@@ -234,28 +234,20 @@ Engineer: "I'd like to be able to 'drag' nodes around in the actual UI and see t
 - **Speed:** a hard route on T1 is about 50 ms, so a move that reroutes 2-3 stretches is 100-200 ms, interactive. Moves that need negotiation will lag, which is itself a measurement.
 - **Order:** after N2b (the primitive), before N3 (dragging prio joins with their rows tests D472-D476 directly). The GUI's design (what is grabbed, what is shown, when it reroutes) is settled with the engineer first.
 
-### 9.9 The drag feature: state and primitive (draft for the engineer, 2026-11-27)
-After the tripwire (M34) the focus is the drag feature (engineer: "lets focus on what we need for the drag feature"). It needs four things, in this order: a sound router (self-clash, BRIEF-length-selfclash1), an edit state made of vertices and edges, the primitive "move a vertex, reroute its edges", and the UI.
-- **It does not need the builder to succeed.** It starts from a drawn hub: first the engineer's rig T1 (the answer key, judged clean but for its known curve), later any built hub.
-- **Vertices:**
-  - **node:** a split or merge; it slides along its trunk;
-  - **structure:** a bridge or tunnel with all its crossings: the separator's span on its axis and each crosser's passage under it; it moves along the separator's axis and sideways with its crossers;
-  - **port:** a line end on the box side; fixed in version 1.
-- **Edges:** every map track cut at its vertices: the stretch from one vertex to the next. Because crossings belong to structure vertices, **no edge contains a crossing**. Rerouting an edge is the router's simplest call: from A to B, with the headings and curve windows of its neighbours at both ends, touching nothing. The crossing plan is kept by the vertices, not by the routes.
-- **The drawn hub** is assembled from the edges each time; the judge reads it as today.
-- **The primitive:** `Move(vertex, position)` reroutes the vertex's incident edges (hard, between their end vertices). Version 1 refuses a move when any of them has no route, and shows why: a drag that cannot be made is shown, not forced. Pushing neighbours out of the way (negotiation on edges, blame from face walls) is version 2. Elasticity comes from rerouting: each edge takes its least-bend, shortest route, so bends appear and vanish.
-- **Speed:** a node move reroutes 2-4 edges, so on T1 (about 50 ms a route) a move is about 100-200 ms.
+### 9.9 The drag feature: state and primitive (D479)
+After the tripwire (M34) the focus is the drag feature (engineer: "lets focus on what we need for the drag feature"). Version 1 is direct geometry, not rerouting (D479).
+- **State:** a drawn hub's polylines. **Vertices** are every polyline point: port ends (fixed), nodes (splits and merges), and bend points. **Edges** are the straight segments between consecutive vertices, each with a fixed heading. A structure (bridge or tunnel) is one handle (D479).
+- **Drags:**
+  - a node or bend vertex moves by a requested displacement;
+  - an edge moves both its end vertices by the same displacement;
+  - the segments next to them change length to absorb it. Headings never change; ports never move.
+- **Clamping:** the result keeps every rule the geometry owns. Every segment is at least its least length (an axis piece a tile, a diagonal one piece). Consecutive bends keep the curve spacing (`curve_same` / `curve_opposite`, and the window rules for 2 and 3 apart, G3). The drag goes as far along the requested direction as those allow, then stops. It is never refused and never forced.
+- **Solve:** the polyline is a chain of segments with fixed headings, so a vertex's position is the sum of the segment vectors before it. A drag is a small linear program: maximise t, the fraction of the requested displacement, subject to the segment-length bounds and the curve-spacing rows, with the ports fixed. It goes through `JunctionMilp` (HiGHS, already linked) as an LP; on a hub this size it is far under a millisecond.
+- **First hub (D479):** one straight line with a right turn off it (the TurnS topology: W in, E out, a split, the leg turning right to the S out port). Dragging the split along the line: the ports stay; the leg's diagonal and straight segments absorb the move; it stops when the leg's two bends are a curve length apart.
+- **Later, on the same state:** clashes with other tracks as rows (the judge confirms); structures as one handle; edges through waypoints; pushing neighbours (negotiation on edges); the builder rebuilt on this state (§9.7's tripwire).
 - **Steps:**
-  - **D1** the edit state from a drawn hub (vertices, edges), and back. Outer test: rig T1 hub to state and back is the same hub, judged the same.
-  - **D2** `Move` for node vertices. Outer test: sliding T1's L4 split one tile along its trunk gives a hub the judge accepts, with only its incident edges changed.
-  - **D3** `Move` for structure vertices.
-  - **D4** the in-game UI: ghost, handles, drag, red judge tiles, undo, build to the rig. It needs a session with the engineer on what is grabbed, what is shown, when it reroutes.
-  - **D5** pulling a line sideways (an edge through a waypoint).
-  - **Then** negotiation on edges for blocked moves, and the builder rebuilt on the same state (§9.7's tripwire).
-- **Open, for the engineer:**
-  - (1) Is a structure one handle, moving all its crossings together, or is each crossing its own handle?
-  - (2) Start from the rig T1 answer key?
-  - (3) Version 1 refuses a blocked move and shows why. Is that enough to start, before pushing?
+  - **D1** the drag solve, headless: `PlanarDragHub(hub, vertex or edge, displacement, rules) -> hub, t`. Outer tests on the TurnS hub: drag the split east and west, check the ports are unchanged, check how far it goes (the clamp) against the curve spacing worked out by hand, and that the judge accepts every result.
+  - **D2** the in-game UI on the same function: ghost, grab, drag, release. Its design is settled with the engineer first (what is drawn, the handles, snapping to the tile grid).
 
 ### 9.6 Open (for the engineer)
 - Whether step 3's model is tractable. The curve windows are the risk.
