@@ -82,6 +82,9 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 
 - **M13** [measured] T2's size is set mostly by Structure's variant choice. With B's S-bends removed (h, h+-1, h counted as h), C's Shape on the variant matching B's choices (o4t3f1m120) gives B's base headings on 20 of 24 lines; C's variant 0 (o3t2f1m150, the one our legal drawing uses) on 11 of 24. On variant 0, main lines run diagonal (E2 3, B2 7, C1 0, A2 6 5) where B keeps them on the axis with sideways S-bends. Structure ranks the matched variant 1760th on length-free scores. *Evidence:* ng2 9a920665b8, wip/probes/sizing/headings.md (stripping by the orchestrator). *So:* Shape is fine given the right variant. The variant ranking, a decision made without lengths (session review item 4, decision (b)), is what loses compactness on T2.
 
+- **M14** [measured] Straight cut shifts alone cannot compact T2's legal drawing at all: 0 moves in one sweep (3 ms). 223 cuts are blocked by diagonals, 6 by pieces becoming too short, 6 by curve speed. The worst cuts cross 9-12 tracks on diagonals at once: whole bundles run diagonally together (M12). *Evidence:* ng2 3e07a0476b, wip/probes/length/compact1.md. *So:* the diagonal rewrite at the cut (diagonal, then a one-tile axis piece, then diagonal) is essential, and it applies to a whole bundle at once (a group move).
+- **M15** [measured] `CheckPlanarDrawnHub` refuses T2's legal drawing on a prio row (`prio:B2`, grid), while the domain (with D455's beside-run rule) accepts it. *So:* the drawn-hub check disagrees with D455 for rows; legality uses the domain.
+
 ## Open
 - **Q3** Does the matched variant (o4t3f1m120) draw legal and compact in C's exact program (bends fixed, every rule on), near B's 94 x 29? That needs a first legal drawing of that variant.
 - **Q1** Can a clearance direction be fixed exactly from T2/T3 facts for more pairs (`walk`, `walk_strict`: exact or not on T2's legal drawing)?
