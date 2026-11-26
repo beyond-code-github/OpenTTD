@@ -3,21 +3,30 @@
 History lives in git. The previous STATUS: `git show d18117a214:docs/junction-tool/STATUS.md`. Planned work: ROADMAP.md. Rulings: DECISIONS.md, where later rows win and dead rows were removed on 2026-11-18. Current design: DESIGN-tracks.md. Docs culled 2026-11-18 (695 legacy or finished files removed; every file and why: wip/CULL-docs-proposal.md; all of them in git at a7f10e9af0). 84 files the cull was unsure of are still here, awaiting review.
 
 ## Where things are
-- **NOW (2026-11-26, late): the plan of record is DESIGN-length-layer §9, with D465 to D469.**
-  - **The one judge** (`JudgePlanarDrawnHub(hub, topology, spec)`) holds every pre-signal rule. The engineer's rig T1 is the answer key: it passes everything except the known curve.
-  - **The tile router is sound locally** (M20). What is missing is lookahead and backtracking, and the builder uses only part of Structure.
-  - **The plan** (D468, D469): every Structure variant is a hub, and the length layer seeks each variant's optimum. Offline enumeration prunes the variants; the near-optimal ones become the tool's options. Generic opinions (§9.4) scale this toward LLLL_RRRR.
-  - **Order** (§9.5):
-    1. Done: the curve window across a node (139c546ee9).
-    2. Done: crossings, separators and one-passage counting from the map (ee729acca7, 9342e4e4ee, 7a675e45ac, builder commit). The greedy builder now fails T1 under the plan (M21); its T1-build tests are pinned `[!shouldfail]`.
-    - NEXT (2026-11-27): prio rows (§9.5 step 3), then the exact T1 spike.
-    2. Crossings, separators and sides from the map.
-    3. An exact T1 optimum spike (CP-SAT).
-    4. The T1 variant study.
-    5. The four-way.
-  - **Rig:** `~/.cache/ottd-rig`, ports 4077/4079, binary `OTTD_RIG_BIN=.claude/ng1/build-rel/openttd`, company 0. Study 1 and study 2 bests are at (29, 4) and (4, 4).
-  - **jt** caps each case's log at 1 MiB (WSL crashes, 2026-11-26).
-  - **Code:** on ng2 wt-c2.
+- **NOW (2026-11-26, parked for the night): the plan of record is DESIGN-length-layer §9, with D465 to D470.** Read FACTS (to M21), §9 and D465-D470 first.
+  - **The one judge** (`JudgePlanarDrawnHub(hub, topology, spec)`) holds every pre-signal rule. Every solver is scored by it, and none re-encodes a rule (D465). Bridges carry no spare middles (D466), and a doubled pair's copies match (D467).
+  - **The answer key** is the engineer's rig T1 (`corpus/out/rigt1`; tracks matched by name, `InTopologyOrder`). It passes the judge apart from the known S-to-E curve, which a re-laid L11 removes (rig at (75, 4)). Its `structure.txt` now has its 3 bridges.
+  - **The tile router is sound locally** (M20). It keeps the curve window across nodes, and it follows the map's crossing plan: listed crossings only, in order, from the listed side, with Structure's separator rising and one crossing per passage.
+  - **The greedy builder cannot build T1 under the plan** (M21: 0 of 50 seeds). Lookahead and backtracking are needed for the build to exist at all. The T1-build tests are pinned `[!shouldfail]`.
+  - **The plan** (D468, D469): every Structure variant is a hub, and the length layer seeks each variant's optimum. Offline enumeration prunes the variants, and the near-optimal ones become the tool's options (user choice or random). Generic opinions (§9.4) carry this to hubs too big to enumerate, up to LLLL_RRRR. Human hubs are a floor, not the target (memory: emergent hubs).
+  - **Next, in order** (§9.5):
+    1. **Prio rows** (step 3, first thing 2026-11-27):
+       - Declare `prio E1, B1` in the rig T1 topology (D470: prios are always declared).
+       - Add the engineer's prio rows to the answer key. He rebuilds them in the rig on his T1 at (50, 4), or they are extracted from his "PS - Step 3" build in his save (`~/.cache/ottd-rig/rig-restore.sav`), which had prios.
+       - The builder lays rows exactly coverage long.
+       - With prios declared, the pinned P6 line on L8 should go away.
+    2. **The exact T1 optimum spike** (CP-SAT, §9.2). It needs no greedy order, so it shows whether T1 is solvable under the plan and what the best answer is.
+    3. **The T1 variant study.**
+    4. **The four-way, then the scalable search** (gap reservation with local backtracking, or negotiated routing).
+  - **Open:** whether doubling should be a Structure variant choice, not forced by share (D470, the P6 note).
+  - **Rig:**
+    - Location: `~/.cache/ottd-rig`, ports 4077 and 4079, company 0.
+    - Environment: `OTTD_RIG_BIN=/home/pete/OpenTTD/.claude/ng1/build-rel/openttd OTTD_RIG_DIR=$HOME/.cache/ottd-rig OTTD_RIG_PORT=4077 OTTD_RIG_GAME_PORT=4079`.
+    - Contents: search 2 best at (4, 4), search 1 at (29, 4), the engineer's T1 at (50, 4), his T1 with the new L11 at (75, 4).
+    - Join with `ng1/build-rel/openttd -n 127.0.0.1:4079` (no `#1`), then pick the company.
+  - **Corpus map export** of the rig T1: `~/.cache/ottd-corpus/maps/PSG_9001/rig.json`. Use extractor `--root ~/.cache/ottd-corpus`.
+  - **Tests:** `jt` kills each case at its budget and caps its log at 1 MiB; a runaway Catch2 test crashed WSL twice. Keep TEST_CASE and SECTION names short, with no colon.
+  - **Code:** ng2, branch wt-c2, HEAD 8a5f5bff7e. Not merged into feature/junction-tool. Every brief is in ng2 `docs/junction-tool/wip/BRIEF-length-*.md`.
 - **NOW (2026-11-25, parked): resume from `wip/IDEAS-2026-11-25-sizing.md` and `wip/HANDOVER-2026-11-24-d456.md` UPDATE 11.** T2 legal (CP-SAT witness, stretched); B's old hubs are domain-legal; nothing reaches T4/PSG 197 from text; sizing is the blocker. Open for the engineer: the 'no dead end' ruling; next = joint CP model (bends with lengths) vs outside view vs corpus.
 - **NOW (2026-11-23): D428 step 1 DONE (6cefe6cc17, merged).** `CheckPlanarDomain` (planar_domain.h): the game truth. Connections only at listed nodes (edge midpoints), no X|Y diamond, heads exclusive, bridge middles exclusive (tunnels by depth, D155), only listed crossers under middles (tunnels too). The rasteriser is proven equal to `RasterizeJunctionRoute` (60+ routes). 19 hand cases. Finding: `[planar]` is over its 5 s Debug budget (6 s) from two existing planarstructure tests (T2 cost, variants vs promise), not this step. Deferred: step 1b curve gaps. Step 2a DONE (de1266457c, merged): `PlanarDomainInputOf` (planar_domain_map.h). FINDING (probe): `CheckPlanarDrawable` with `grid = true` on X1 is Optimal but off the game grid (nodes and ports on even-parity points; A1 runs east along y = 2). Grid rows skip pieces with least length 0 (flex flanks) and node points. The domain rejects it as "grid" on every track. Step 2b DONE (fc8eaa549d + rules switch, merged): `keep_apart_out` / `build_only` read-out, `PlanarKeepApartHolds` (no solve; agrees with the program on X1). Hidden `[planardomainenc]`, `PLANAR_DOMAIN_RULES=plain|span|zero|all`, reports wip/probes/domain/encoding-x1*.txt. On 501 on-grid, domain-legal-or-not geometries (S1, S2, N1):
   - plain: 0 too strict, 154 too loose; strict_span: 0 too strict, 127 too loose; strict_zero / all: 298 too strict (every legal geometry), 0 too loose.
