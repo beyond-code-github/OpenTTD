@@ -105,6 +105,14 @@ Outside-in, each step a brief:
 **Version 1 leaves out, and reports:** doubling (full-share lines over crossings are single bridges), prio rows and coverage, signals before bridge heads, re-settling (measured first: how far version 1 lands from the engineer's T1 tells us which to add).
 **Router extension needed:** a goal line (reach x = X or y = Y at a heading, any position along it), step 3c.
 
+## 4h. The hybrid pipeline (engineer, 2026-11-26: "This is starting to sound like it could form part of a hybrid approach with the old solver perhaps? Heights was the one thing that worked really well about the old one")
+1. **Structure** (unchanged): variant, track map, event order (D286).
+2. **The builder** (§4d, §4g): every discrete choice, legally and fast: node positions, bends, which track rises, port positions.
+3. **Length polish** (the drawing program with the builder's choices fixed: sides from the built hub, bends fixed): every length as tight as the rules allow, the whole hub at once. M8: exact and under 0.1 s on T2 with every choice fixed, domain- and curve-legal; it could not make the choices, the builder does.
+4. **Heights**: the old level solve (ramps, foundations, terraform) on `RenderPlanarDrawnHub`'s layout, as the planar back end already sends its plans through it (D365's Heights layer).
+5. **Signals**: the signal pass on the drawn hub (D452, D455).
+To verify when the builder lands: the polish keeps the builder's hub legal and shrinks it; the old level solve accepts the rendered layout unchanged.
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
