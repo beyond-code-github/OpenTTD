@@ -20,6 +20,13 @@ Every rule we have is a tile rule or a rule along a path of tiles, and each is c
   - a **structure**: its deck and every crosser's crossing tile under it (B1, B4).
 - **Legality** is one function on a layout: domain plus curve speed plus coop path rules. It is the only judge. Every state the algorithm keeps is legal.
 
+## 4a. The engineer's model (2026-11-26): elastic lines settling into grooves
+Engineer: "it's best to start with the turns"; "Nothing is truly fixed, although typically some things like main lines only shift a tiny bit"; "starting with the basic tracks and then kinda 'pushing' things apart where room needs to be made for crossings"; "It's almost more of a physics problem ... Layers of sand with gravity pulling them to the middle of the hub"; "there's a centre line to the hub, and things get pushed depending on what side of the hub they sit on. Imagine each line is elastic and settles into it's groove."
+- The hub has a centre line. Gravity pulls every track towards it; a track is pushed outward on its own side of the centre line when room is needed (a crossing's bridge, clearance, curve spacing).
+- Each line is elastic (wants to be short) and settles into its groove. Main lines are stiff (shift a little); others are soft.
+- It starts collapsed (tight, conflicting) and expands only where a rule forces it, so it cannot inherit stretch it never had (M8, M16 came from shrinking a stretched start).
+- Being worked through on simple hubs first (worked examples), before any probe. §5 below is the earlier draft (sparse start, then compaction) and is superseded by this once the examples settle it.
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
