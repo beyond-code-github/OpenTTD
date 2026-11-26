@@ -27,6 +27,20 @@ Engineer: "it's best to start with the turns"; "Nothing is truly fixed, although
 - Every step is legal (D464): elements are added one at a time, each settled in its groove; when an addition needs room it pushes, and a push is either a track moving sideways out of the way or a track rising (a bridge) to let a line pass under. Nothing is ever illegal, and nothing starts stretched, so no stretch is inherited (M8, M16 came from shrinking a stretched start).
 - Being worked through on simple hubs first (worked examples), before any probe. §5 below is the earlier draft (sparse start, then compaction) and is superseded by this once the examples settle it.
 
+## 4b. Worked example T1, built by the engineer in the rig (2026-11-26, left-hand drive, no prios yet)
+Read off the rig map (signs "PS - Step 1..3" at (91, 69), (92, 85), (93, 99)); steps side by side, every step a legal layout.
+1. One main line and one turn leaving it (split, short diagonal, then straight to the south side).
+2. A second turn leaves the same main line 5 tiles further on; the two branch tracks cross each other right away; the one running straight rises on a short bridge, the diagonal one passes under ("the tracks heading straight are the ones to rise").
+3. The other main line is added last, two tiles from the first, and rises over the whole crossing cluster as a doubled bridge (split, two equal bridges staggered one tile, merge; D331). A third branch joins it from the south-west; one more straight-rises bridge below.
+
+Result: about 20 x 11 tiles before prios, against the orchestrator's greedy attempt at 47 x 19 (which also wrongly used single main-line bridges).
+Lessons for the physics:
+- Start from one main line and its turns, not both main lines.
+- Elements go close to where they connect; crossings resolve locally (rise, or step aside) in one tight cluster where the turns leave the main line.
+- The second main line comes last and rises over the cluster in one doubled structure.
+- Greedy insertion that fixes each element where it first fits spreads everything outward (the orchestrator's attempt); nothing should be fixed once placed.
+Step 4 (prios) pending.
+
 ## 5. The algorithm (VLSI symbolic layout, then compaction)
 1. **A legal sparse start.** Lay the topology out with generous spacing: structures and nodes far apart, tracks routed between them on tiles by a state-space search (state: tile edge, heading, and the bends inside the train-length window, so curve speed holds by construction; G3). Fixed-size elements (bridges, prio rows, bays) keep their size; only the free track between them stretches. Phase 1 needs no quality, only legality (M8 showed choices from a stretched drawing are usable).
 2. **Compaction by legal moves.** Repeat until no move shrinks the area:
