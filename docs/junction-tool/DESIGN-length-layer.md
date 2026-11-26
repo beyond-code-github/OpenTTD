@@ -62,12 +62,12 @@ Lessons:
 ## 4d. The physics rules (draft v1, from worked examples T1 and the four-way; to be checked by hand on T2 before any code)
 **Inputs (from Structure, length-free):** the track map with its event order (splits early, D286), for each crossing who rises (Structure's separator; default: the track heading straight rises), flow shares (stiffness: full share is stiff), the coop rule fields.
 **Invariant:** the layout is legal after every step (D464): domain, curve speed, coop rules (bays, coverage, D108, signals before bridge heads).
-**Insertion order:**
-1. The stiffest line (a full-share main line), straight across.
-2. Its turns (the splits and merges on it), in event order along it, each at the closest legal position to where it connects, settled in its groove (the tightest legal curve).
-3. The next main line, as close as legal to what exists; where it meets existing tracks, the separator rises over them as one structure (doubled when full share).
-4. Its turns, as in 2. Repeat 3-4 for further main lines.
-5. Prio rows (on the outer side) and bays last: they push along the line.
+**Insertion order** (engineer, 2026-11-26: "the insertion order seems wrong. Basically I was doing all the right turns first"):
+1. The turns that cross the opposing traffic first (right turns in left-hand drive, left turns in right-hand drive): each placed against the line it leaves or joins, settled in its groove, close together. They cross each other in one cluster; where they cross, the track heading straight rises.
+2. Then the straight lines, rising over the cluster where they meet it (one structure each, doubled when full share).
+3. Then the other turns (left turns in left-hand drive), which cross nothing.
+4. Prio rows (on the outer side) and bays last: they push along the line.
+(The draft before this correction put the main lines first; the engineer's builds show a main line only as the anchor a right turn leaves from.)
 **Pushes (each legal):** rise (a bridge), step aside (sideways), along the line (a node moves along its line, attached tracks stretch). A push takes the smallest legal amount, moves the softest element involved, in the direction away from the core given by the planar sides.
 **Re-settle after every insertion:** every element moves inward (towards the cluster) while it stays legal; nothing is fixed once placed (the orchestrator's greedy T1 lacked this and spread outward).
 **Open:** how "closest legal position" is searched; what moves a re-settle may use (the compaction probes' cut shifts and rewrites, group moves per bundle and structure); termination; whether insertion order matters beyond 1-5.
