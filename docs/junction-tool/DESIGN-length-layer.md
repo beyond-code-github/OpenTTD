@@ -163,6 +163,7 @@ A CP-SAT model of T1 on tiles, offline. It decides every tile, under the same ru
 2. Give each one its best legal area: the exact optimum (§9.2) where it runs, the §9.1 builder with search where it does not, and both where both run, to calibrate the builder.
 3. Record per variant its decisions in the generic vocabulary (§9.4) and its area.
 4. Find the decisions shared by the best variants and missing from the worst.
+5. Prune (D469). Per variant only its optimum matters. Variants whose optimum is outside a range of the hub's best are dropped. The rest are the tool's options, for the user to choose from or for the tool to randomise. The §9.4 opinions carry the pruning to hubs too big to enumerate.
 
 The ladder: T1 → L_R four-way → T2 (16 384 variants) → T3 → LL2 → PSG 197 → LLLL_RRRR. Each rung checks whether the previous rung's opinions still predict the winners.
 
