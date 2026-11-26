@@ -51,6 +51,8 @@ A probe that teaches us something about the problem adds a Part 1 row. A probe t
 
 - **C1** [measured] Domain-legal is not hub-legal: the domain checks tile rules only, not curve speed. A drawing solved without the curve rows broke curve speed on 11 of 12 T2 routes (worst 88); with them (on by default) it breaks none. *Source:* ng2 ee610eb273, 73fbb806f3. *So:* every "legal" claim needs the game's curve-speed check (`JunctionMinCurveSpeed`) as well as the domain, and every probe must state that its curve and bay rows are on (the domain suite's `X1Fixture` turns them off).
 
+- **K6** [corpus] The engineer's hand-built one-lane T (left-hand drive, rig) is about 20 x 11 tiles before prios, against an orchestrator's greedy hand attempt at 47 x 19. Judged by `JudgePlanarDrawnHub`: domain and bays clean, one route (S to E) at 132 below the 160 design speed. *Source:* ng2 corpus `rigt1` (b5012eea58), wip/probes/length/judge-rigt1.md (2a3acae69d); DESIGN-length-layer §4b.
+
 ## Scale
 - **N1** [derived] Tracks per hub: T2 32, T3 54, LL2 57. PSG 197 has 122 crossings. *Source:* ng2 wip/probes/sizing/counts.md.
 - **N2** [derived T2, T3] Pairs of tracks bounding a common face: T2 about 1700, T3 about 3200, LL2 about 3600. Only a small share are close enough to bind in a drawing: about 155 of 957 on T2's legal drawing, after zero-length pieces are merged away. *Source:* ng2 adb83d02d6.
