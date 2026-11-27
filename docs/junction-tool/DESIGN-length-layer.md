@@ -234,20 +234,13 @@ Engineer: "I'd like to be able to 'drag' nodes around in the actual UI and see t
 - **Speed:** a hard route on T1 is about 50 ms, so a move that reroutes 2-3 stretches is 100-200 ms, interactive. Moves that need negotiation will lag, which is itself a measurement.
 - **Order:** after N2b (the primitive), before N3 (dragging prio joins with their rows tests D472-D476 directly). The GUI's design (what is grabbed, what is shown, when it reroutes) is settled with the engineer first.
 
-### 9.9 The drag feature: state and primitive (D479)
-After the tripwire (M34) the focus is the drag feature (engineer: "lets focus on what we need for the drag feature"). Version 1 is direct geometry, not rerouting (D479).
-- **State:** a drawn hub's polylines. **Vertices** are every polyline point: port ends (fixed), nodes (splits and merges), and bend points. **Edges** are the straight segments between consecutive vertices, each with a fixed heading. A structure (bridge or tunnel) is one handle (D479).
-- **Drags:**
-  - a node or bend vertex moves by a requested displacement;
-  - an edge moves both its end vertices by the same displacement;
-  - the segments next to them change length to absorb it. Headings never change; ports never move.
-- **Clamping:** the result keeps every rule the geometry owns. Every segment is at least its least length (an axis piece a tile, a diagonal one piece). Consecutive bends keep the curve spacing (`curve_same` / `curve_opposite`, and the window rules for 2 and 3 apart, G3). The drag goes as far along the requested direction as those allow, then stops. It is never refused and never forced.
-- **Solve:** the polyline is a chain of segments with fixed headings, so a vertex's position is the sum of the segment vectors before it. A drag is a small linear program: maximise t, the fraction of the requested displacement, subject to the segment-length bounds and the curve-spacing rows, with the ports fixed. It goes through `JunctionMilp` (HiGHS, already linked) as an LP; on a hub this size it is far under a millisecond.
-- **First hub (D479):** one straight line with a right turn off it (the TurnS topology: W in, E out, a split, the leg turning right to the S out port). Dragging the split along the line: the ports stay; the leg's diagonal and straight segments absorb the move; it stops when the leg's two bends are a curve length apart.
-- **Later, on the same state:** clashes with other tracks as rows (the judge confirms); structures as one handle; edges through waypoints; pushing neighbours (negotiation on edges); the builder rebuilt on this state (§9.7's tripwire).
-- **Steps:**
-  - **D1** the drag solve, headless: `PlanarDragHub(hub, vertex or edge, displacement, rules) -> hub, t`. Outer tests on the TurnS hub: drag the split east and west, check the ports are unchanged, check how far it goes (the clamp) against the curve spacing worked out by hand, and that the judge accepts every result.
-  - **D2** the in-game UI on the same function: ghost, grab, drag, release. Its design is settled with the engineer first (what is drawn, the handles, snapping to the tile grid).
+### 9.9 The drag feature: state and primitive (D479, D480)
+After the tripwire (M34) the focus is the drag feature (engineer: "lets focus on what we need for the drag feature").
+- **State:** a drawn hub's polylines. Vertices are ports (fixed), nodes, and structures (one handle each, D479). Bends are not handles: each edge between two vertices is relaid when a vertex moves, so bends appear and vanish (D480).
+- **Drag (D480):** each mouse move proposes the vertex at the tile under the cursor. The layout updates only if that position is valid: every edge attached to the vertex can be laid legally between its end vertices, and the judge accepts the hub. Otherwise the drag shows the last valid layout. No search over positions.
+- **Relaying an edge:** between two known end points with known end headings (the neighbouring pieces' headings at each end), the least-bend octilinear shapes are few: straight, one bend, two bends (an S-bend or a dog-leg). Enumerate them in closed form, keep those whose bends hold the curve spacing (also across the ends, against the neighbours' bends) and whose pieces hold their least lengths and touch no other track, and take the one with the fewest bends, then the shortest. The router (A*) is the fallback only when every simple shape is blocked. One evaluation is then microseconds to a millisecond.
+- **Already built (D479's version):** `PlanarDragHub` with fixed headings and a clamp along the drag direction (ng2 3f540f554d, 26926c427f). It stays as the fine slide when no heading needs to change; D480's relayer is the main path.
+- **Steps:** D1c the edge relayer (closed-form shapes) and `PlanarDragTo(hub, vertex, target) -> hub or invalid`, tested on the roomy hub: the split dragged up from the main line grows an S-bend each side and dragged back loses them; a target where the curve rules fail is invalid and leaves the hub unchanged. Then D2, the in-game UI on `PlanarDragTo` (its design with the engineer first).
 
 ### 9.6 Open (for the engineer)
 - Whether step 3's model is tractable. The curve windows are the risk.
