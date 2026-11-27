@@ -140,3 +140,8 @@ Drawing expert rail hubs: a layered octilinear layout model checked against expe
 ## 2026-11-25: first v2 hub signalled in the game (T1)
 - Claim: the v2 path (Shape, Slots stage A -> contraction -> stage B -> polish, then the drawn hub D452 and its render from the domain raster) produces a T1 that the game builds and signals, with prio rows exactly their coverage (D384) and non-drivable chevron joins (D455).
 - Evidence: judge accept, domain accept 0 breaks; rig build 329 pieces incl. 96 signals, 0 failures; engineer on the prios: "They look pretty good to me!". Pins: t1-final-coverage*.drawing.txt and the signal-pass outer test. Known: not yet compact (STATUS "Noted, not now").
+
+## 2026-11-27: a human draws a near-optimal hub with the solver's own primitives
+- Claim: the primitives the solver needs (relay a track between fixed points with the groove router, place a split or merge at the cheapest point, bridge what a track crosses, pull points that hold through every relay, a node that picks the shortest of its 24 shapes) are enough for a person to draw a hub from scratch quickly, and the drawn hub is a valid hover seed that the game levels, prices and builds.
+- Evidence: the engineer drew a T with both bridges, its splits, merges and waiting bays "very quickly" ("a pretty optimal T"), then built it from "Use as seed" ("I think it was ok"). The drawing gestures are D494-D503 (ng2 wt-c2, commits from 6384fc2c86 to f39e63e14d); every gesture is unit-tested on a hand layout of one or two lines; the drag on T1 accepts 17 of 32 one-tile node moves (FACTS M37, M38).
+- Caveats: no prio and no tunnels in drawn hubs; the drawn T is not yet measured against the rig T1 or judged with a derived topology (D500 (2) queued).
