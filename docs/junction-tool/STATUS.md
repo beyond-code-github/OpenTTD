@@ -3,7 +3,29 @@
 History lives in git. The previous STATUS: `git show d18117a214:docs/junction-tool/STATUS.md`. Planned work: ROADMAP.md. Rulings: DECISIONS.md, where later rows win and dead rows were removed on 2026-11-18. Current design: DESIGN-tracks.md. Docs culled 2026-11-18 (695 legacy or finished files removed; every file and why: wip/CULL-docs-proposal.md; all of them in git at a7f10e9af0). 84 files the cull was unsure of are still here, awaiting review.
 
 ## Where things are
-- **NOW (2026-11-26, parked for the night): the plan of record is DESIGN-length-layer §9, with D465 to D470.** Read FACTS (to M21), §9 and D465-D470 first.
+- **NOW (2026-11-27, parked for the night): the drag tool became the solver's engine and a hub drawing tool (D494). Read DESIGN-length-layer §9.8-§9.10 and D479-D503 first.**
+  - **Where the code is:** worktree `.claude/ng2`, branch `wt-c2` (not merged into feature/junction-tool; head after the night's work f39e63e14d plus docs). Client: `cd .claude/ng2/build-rel && ./openttd -g` with the engineer's normal config; restart it only when he says so.
+  - **Built and in his hands (all in the junction window's drag modes; "Draw hub" starts empty):**
+    - routes by double-click pairs, each end a new tile, an existing port (cheapest point on its line) or a point on a line (exactly there) (`PlanarAddRouteBetween`, D494, D495, D498);
+    - splits always before merges on every added route (D24);
+    - right-click a line to add a pull point, a pull point or a port to remove it (D497, D499: a port is a pull point that ends a line; a removed port takes its line back to the nearest node, which dissolves);
+    - `,`/`.` turn a port or pull point one eighth (D496);
+    - drags: nodes (24 shapes, shortest kept, D502, D503), ports (along and across their side, D487), bridge heads (span resize, past a bend the separator relays straight, stops at its node, D489, D491, D492, D493), pull points;
+    - a one-level rip-up of tracks in the way (D488);
+    - every move evaluated from the grab, so dragging back restores exactly;
+    - a refusal's why in the cursor tooltip; Save hub (`~/.local/share/openttd/junction_drawn_hub.json`, pull points included);
+    - "Use as seed": the drawn hub hovers, levels, prices and builds on the map (D500 (1)).
+  - **Engineer's verdict:** "I was able to build a pretty optimal T very quickly using the tool"; the seed path "was ok".
+  - **Queued, in his order of interest:**
+    1. derive a topology from a drawn hub (D500 (2)): ports, routes, nodes, crossings in order with arrival sides, in his notation, so the full judge and the builder's reference mode can use it;
+    2. judge and measure his saved T against the rig T1 (once he has saved it);
+    3. the sideways bridge drag (D497 (2), advice not yet confirmed);
+    4. landings on long bridges (D490);
+    5. the cascade push (parked until he brings a concrete example; sketch in the 2026-11-27 lines below);
+    6. a larger search budget for port rotations so a full turn loops round;
+    7. prio is not drawable yet (D470).
+  - **Process notes:** prove each design on the simplest hand layout, never a T1-derived fixture (memory `designed-fixtures`); agents build only `openttd_test` while iterating; record red before code. Agents repeatedly used Python rewrites against the Edit-tool rule.
+- **EARLIER (2026-11-26): the plan of record is DESIGN-length-layer §9, with D465 to D470.** Read FACTS (to M21), §9 and D465-D470 first.
   - **The one judge** (`JudgePlanarDrawnHub(hub, topology, spec)`) holds every pre-signal rule. Every solver is scored by it, and none re-encodes a rule (D465). Bridges carry no spare middles (D466), and a doubled pair's copies match (D467).
   - **The answer key** is the engineer's rig T1 (`corpus/out/rigt1`; tracks matched by name, `InTopologyOrder`). It passes the judge apart from the known S-to-E curve, which a re-laid L11 removes (rig at (75, 4)). Its `structure.txt` now has its 3 bridges.
   - **The tile router is sound locally** (M20). It keeps the curve window across nodes, and it follows the map's crossing plan: listed crossings only, in order, from the listed side, with Structure's separator rising and one crossing per passage.
