@@ -57,3 +57,17 @@ Head 9a7b353f79, release build, input = pf2's best.json (23 x 43, cost 334). Tem
 Final (final.json in the scratch folder) against the engineer's T1 (23 x 14 = 322, cost 236, travel 196): cost 270 / 236 = 1.14 (was 1.42), area 989 / 322 = 3.07 (unchanged), box 23 x 43 against 23 x 14.
 
 Gap. The pull-in took the cost gap from 98 to 34 half tiles (travel 300 to 234, against his 196) because the S in port L12 walked from y = 100 up to y = 46 (27 pulls), but it did not touch the area: the box is still set by the S out port L7, a straight run from its merge at (27,36) to (27,100) that no pull-in moved. The drag does accept the one-tile pull of L7's end, but relaying L7 along its straight line drops its bridge over L4 (L4 crosses it at about (27,39)), so the rip-up (D488) throws L4 into a 12-point detour north of the hub and adds a structure: +30 cost for the one-tile pull (306 against 276), +20 for six tiles, so the rule rejects it every time. L12's own pull stalls at y = 46 for the same kind of reason (one tile refused, two tiles accepted at +46, area worse because the track then runs wider). So what is left of the gap is one track: with L7 pulled in to the hub (L12 now ends at y = 46, so the tracks span y = 15 to 46) the box would be about 23 x 16 (from the points, not measured), next to his 23 x 14; the node polish and the route pass do not do it because they keep ports. A single-port pull of L7 that keeps the L4 crossing as a bridge (the straight track rising, D488 relay of L7 only, not a rip-up of L4) is the missing move. Beyond that, the cost left is travel 234 against 196 and 12 bends against 16 (node spacing, not bridges: 3 structures each).
+
+# pf4: pf3's pipeline again with the bridge head at a node (D529)
+
+Head 11608e0e63 (D529 in the router), release build, input = pf2's best.json (23 x 43, cost 334). The same temporary probe as pf3 (reverted), same caps 30 / 20 / 20 / 15 s. Final hub: scratchpad pf4/final.json.
+
+| stage | box | area | cost (travel, bends, structs) | judge (new) | moves accepted | s |
+|---|---|---|---|---|---|---|
+| input | 23 x 43 | 989 | 334 (300, 10, 3) | empty (0) | | |
+| pull-in 1 | 23 x 16 | 368 | 218 (186, 8, 3) | empty (0) | pull 57, slide 1 | 1.4 |
+| routes | 23 x 16 | 368 | 218 (186, 8, 3) | empty (0) | none (6 redrawn, 0 accepted) | 9.6 |
+| node polish | 23 x 16 | 368 | 214 (178, 12, 3) | empty (0) | node drag 3 | 20.0 |
+| pull-in 2 | 23 x 16 | 368 | 214 (178, 12, 3) | empty (0) | none | 0.5 |
+
+Against the engineer's T1 (23 x 14 = 322, cost 236, travel 196, bends 16, 3 structures): cost 214 / 236 = 0.91 (pf3: 1.14), area 368 / 322 = 1.14 (pf3: 3.07), box 23 x 16 against 23 x 14. The pull-in now takes L7 in (L7 keeps its bridge over L4), so the box is set by the hub, not the port legs; the travel is 178 against 196 and the bends 12 against 16. What is left is two tiles of height.
